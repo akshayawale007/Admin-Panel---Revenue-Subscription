@@ -1,0 +1,640 @@
+@import "tailwindcss";
+@source "../component/**/*.{js,ts,jsx,tsx}";
+@source "../node_modules/flowbite-react/dist/**/*.js";
+@import "flowbite";
+
+/* Tailwind v4 defaults dark: to OS prefers-color-scheme.
+   Bind it to .dark on <html> so yoco-theme controls light/dark. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+  --yoco-primary: #674d9f;
+  --yoco-primary-dark: #5a4189;
+  --yoco-primary-light: #8b6fc4;
+  --yoco-page-bg: #f0eaf8;
+  --yoco-surface: #f3eefb;
+  --yoco-surface-elevated: #ffffff;
+  --yoco-surface-muted: #ebe4f7;
+  --yoco-border: #ddd0f0;
+  --yoco-border-subtle: #e5e7eb;
+  --yoco-text: #3d2d5c;
+  --yoco-text-muted: #6b5b8a;
+  --yoco-input-bg: #ffffff;
+  --yoco-input-border: #d1d5db;
+  --yoco-row-hover: #f9fafb;
+  --yoco-row-alt: rgb(249 250 251 / 0.5);
+  --yoco-shadow: rgb(0 0 0 / 0.08);
+  --yoco-search-bg: #f5e6c8;
+}
+
+.dark {
+  color-scheme: dark;
+  --yoco-primary: #8b6fc4;
+  --yoco-primary-dark: #674d9f;
+  --yoco-primary-light: #a888dc;
+  --yoco-page-bg: #0c0a10;
+  --yoco-surface: #15111f;
+  --yoco-surface-elevated: #1c1728;
+  --yoco-surface-muted: #110e17;
+  --yoco-border: #2f2642;
+  --yoco-border-subtle: #3d3254;
+  --yoco-text: #ece6f8;
+  --yoco-text-muted: #a898c8;
+  --yoco-input-bg: #221d2e;
+  --yoco-input-border: #3d3254;
+  --yoco-row-hover: #252033;
+  --yoco-row-alt: rgb(37 32 51 / 0.55);
+  --yoco-shadow: rgb(0 0 0 / 0.35);
+  --yoco-search-bg: #2a2438;
+}
+
+html,
+body {
+  overflow-x: hidden;
+  max-width: 100%;
+  background-color: var(--yoco-page-bg);
+  color: var(--yoco-text);
+}
+
+input[type="checkbox"] {
+  appearance: auto !important;
+  opacity: 1 !important;
+}
+
+/* CommonTable pagination: center on mobile, right on desktop */
+.table-pagination-bar {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+}
+
+@media (min-width: 768px) {
+  .table-pagination-bar {
+    justify-content: flex-end;
+  }
+}
+
+@keyframes bed-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.bed-skeleton {
+  position: relative;
+  display: inline-flex;
+  height: 1.75rem;
+  min-width: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 0.375rem;
+  border: 1px solid var(--yoco-border);
+  background-color: var(--yoco-surface-elevated);
+  box-shadow: 0 4px 6px -4px var(--yoco-shadow);
+}
+
+.bed-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(229 231 235 / 0.15) 35%,
+    rgb(229 231 235 / 0.35) 50%,
+    rgb(229 231 235 / 0.15) 65%,
+    transparent 100%
+  );
+  animation: bed-shimmer 1.25s ease-in-out infinite;
+}
+
+.dark .bed-skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgb(139 111 196 / 0.1) 35%,
+    rgb(139 111 196 / 0.25) 50%,
+    rgb(139 111 196 / 0.1) 65%,
+    transparent 100%
+  );
+}
+
+.bed-skeleton-label {
+  position: relative;
+  z-index: 1;
+  height: 0.5rem;
+  width: 1rem;
+  border-radius: 0.125rem;
+  background-color: var(--yoco-border);
+}
+
+/* Page canvas behind white table cards */
+.app-page-bg {
+  background-color: var(--yoco-surface-muted);
+}
+
+.yoco-card {
+  border-radius: 0.75rem;
+  border: 1px solid var(--yoco-border-subtle);
+  background-color: var(--yoco-surface-elevated);
+  box-shadow: 0 4px 6px -1px var(--yoco-shadow);
+}
+
+.yoco-login-shell {
+  width: 100%;
+  max-width: 28rem;
+  padding: 2rem;
+  border-radius: 1rem;
+  border: 1px solid var(--yoco-border-subtle);
+  background-color: var(--yoco-surface-elevated);
+  box-shadow: 0 8px 24px var(--yoco-shadow);
+}
+
+.yoco-input {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--yoco-input-border);
+  background-color: var(--yoco-input-bg);
+  color: var(--yoco-text);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.yoco-select-compact {
+  appearance: none;
+  -webkit-appearance: none;
+  width: auto;
+  max-width: 13.5rem;
+  min-width: 8.5rem;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 0.5rem;
+  border: 1px solid var(--yoco-input-border);
+  background-color: var(--yoco-input-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='2' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.55rem center;
+  background-size: 0.9rem;
+  color: var(--yoco-text);
+  padding: 0 2rem 0 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.yoco-select-compact:focus {
+  border-color: var(--yoco-primary);
+}
+
+.yoco-input::placeholder {
+  color: var(--yoco-text-muted);
+  opacity: 1;
+}
+
+.yoco-input:-webkit-autofill,
+.yoco-input:-webkit-autofill:hover,
+.yoco-input:-webkit-autofill:focus,
+.yoco-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px var(--yoco-input-bg) inset !important;
+  -webkit-text-fill-color: var(--yoco-text) !important;
+  caret-color: var(--yoco-text);
+  transition: background-color 9999s ease-out 0s;
+}
+
+html.dark .yoco-input {
+  background-color: var(--yoco-input-bg);
+  border-color: var(--yoco-input-border);
+  color: var(--yoco-text);
+}
+
+.yoco-input:focus {
+  border-color: var(--yoco-primary);
+}
+
+.yoco-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-scroll-panel {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--yoco-text-muted) 38%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, var(--yoco-text-muted) 40%, transparent);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--yoco-text-muted) 70%, transparent);
+}
+
+/* Modules / Permission tab panels */
+.modules-tabs {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.modules-tabs > div {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.modules-tabs > .hostel-tab-actions {
+  display: flex;
+  flex: none;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.modules-tabs [role="tablist"] {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--yoco-border);
+}
+
+.modules-tabs [role="tab"] {
+  cursor: pointer;
+  border-bottom-width: 2px;
+  border-color: transparent;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--yoco-text-muted);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.modules-tabs [role="tab"]:hover {
+  color: var(--yoco-primary);
+}
+
+.modules-tabs [role="tab"][aria-selected="true"] {
+  border-color: var(--yoco-primary);
+  color: var(--yoco-primary);
+}
+
+.modules-tabs [role="tabpanel"] {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--yoco-surface-elevated);
+}
+
+/* Permission pages: shrink-wrap table instead of filling viewport */
+.modules-tabs--fit {
+  flex: none;
+}
+
+.modules-tabs--fit > div {
+  flex: none;
+}
+
+.modules-tabs--fit [role="tabpanel"] {
+  flex: none;
+  overflow: visible;
+}
+
+/* React Toastify dark mode */
+.dark .Toastify__toast-theme--light {
+  background: var(--yoco-surface-elevated);
+  color: var(--yoco-text);
+}
+
+.dark .Toastify__close-button {
+  color: var(--yoco-text-muted);
+}
+
+/* ── Form / page shells (dark-mode aware) ── */
+.yoco-page-card {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  border: 1px solid var(--yoco-border-subtle);
+  background-color: var(--yoco-surface-elevated);
+  box-shadow: 0 4px 6px -1px var(--yoco-shadow);
+}
+
+.yoco-page-card--fit {
+  flex: none;
+  align-self: flex-start;
+  width: 100%;
+}
+
+.yoco-form-section {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--yoco-border-subtle);
+  background-color: var(--yoco-surface-elevated);
+  box-shadow: 0 4px 6px -1px var(--yoco-shadow);
+}
+
+.yoco-form-title {
+  font-weight: 600;
+  color: var(--yoco-text);
+}
+
+.yoco-form-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--yoco-text);
+}
+
+.yoco-form-input-field {
+  width: 100%;
+  appearance: none;
+  border-radius: 0.25rem;
+  border: 1px solid var(--yoco-input-border);
+  background-color: var(--yoco-input-bg);
+  color: var(--yoco-text);
+  font-weight: 700;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.yoco-form-input-field:focus {
+  border-color: var(--yoco-primary);
+  box-shadow: 0 0 0 1px var(--yoco-primary);
+}
+
+.yoco-form-input-field:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.yoco-form-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  border-radius: 0.5rem;
+  border: 1px solid var(--yoco-border-subtle);
+  background-color: var(--yoco-surface-elevated);
+  padding: 0.5rem 1rem;
+  box-shadow: 0 1px 2px var(--yoco-shadow);
+}
+
+.yoco-step-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--yoco-border-subtle);
+  background-color: var(--yoco-surface-elevated);
+  padding: 0.75rem;
+  box-shadow: 0 4px 6px -1px var(--yoco-shadow);
+}
+
+.yoco-step-tabs-mobile {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--yoco-border-subtle);
+  background-color: var(--yoco-surface-elevated);
+  padding: 0.5rem;
+  box-shadow: 0 1px 2px var(--yoco-shadow);
+}
+
+.yoco-step-tab-active {
+  border-radius: 0.5rem;
+  background-color: #674d9f;
+  color: #ffffff;
+}
+
+.yoco-step-tab-inactive {
+  border-radius: 0.5rem;
+  color: var(--yoco-text);
+  transition: background-color 0.15s ease;
+}
+
+.yoco-step-tab-inactive:hover {
+  background-color: rgb(103 77 159 / 0.1);
+}
+
+.yoco-meta-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--yoco-text-muted);
+}
+
+.yoco-meta-value {
+  font-weight: 600;
+  color: var(--yoco-text);
+}
+
+.yoco-table-header-row {
+  border-bottom: 1px solid var(--yoco-border-subtle);
+  background-color: var(--yoco-surface);
+  box-shadow: 1.25rem 0 0 var(--yoco-surface);
+}
+
+.yoco-table-header-cell {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--yoco-text-muted);
+}
+
+.yoco-table-header-cell--center {
+  text-align: center;
+}
+
+.yoco-table-action-col {
+  width: 7rem;
+  min-width: 7rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.yoco-table-body-row {
+  border-bottom: 1px solid var(--yoco-border-subtle);
+  transition: background-color 0.15s ease;
+}
+
+.yoco-table-body-row:hover {
+  background-color: var(--yoco-row-hover);
+}
+
+.yoco-table-body-row:nth-child(even) {
+  background-color: var(--yoco-row-alt);
+}
+
+.yoco-table-body-cell {
+  padding: 0.875rem 1rem;
+  font-size: 0.875rem;
+  color: var(--yoco-text);
+}
+
+/* Ant Design TimePicker — theme aware */
+.ant-picker {
+  background-color: var(--yoco-input-bg) !important;
+  border-color: var(--yoco-input-border) !important;
+}
+
+.ant-picker .ant-picker-input > input {
+  color: var(--yoco-text) !important;
+}
+
+.ant-picker .ant-picker-input > input::placeholder {
+  color: var(--yoco-text-muted) !important;
+  opacity: 1;
+}
+
+.ant-picker .ant-picker-suffix,
+.ant-picker .ant-picker-clear {
+  color: var(--yoco-text-muted) !important;
+}
+
+.ant-picker:hover,
+.ant-picker-focused {
+  border-color: var(--yoco-primary) !important;
+}
+
+.dark .ant-picker-dropdown .ant-picker-panel-container {
+  background: var(--yoco-surface-elevated) !important;
+}
+
+.dark .ant-picker-dropdown .ant-picker-header {
+  border-color: var(--yoco-border-subtle) !important;
+  color: var(--yoco-text) !important;
+}
+
+.dark .ant-picker-dropdown .ant-picker-content th {
+  color: var(--yoco-text-muted) !important;
+}
+
+.dark .ant-picker-dropdown .ant-picker-time-panel-column:not(:first-child) {
+  border-color: var(--yoco-border-subtle) !important;
+}
+
+.dark .ant-picker-dropdown .ant-picker-time-panel-cell-inner {
+  color: var(--yoco-text) !important;
+}
+
+.dark .ant-picker-dropdown .ant-picker-time-panel-cell-selected .ant-picker-time-panel-cell-inner {
+  background: var(--yoco-primary) !important;
+}
+
+.dark .ant-picker-dropdown .ant-picker-time-panel-cell:hover .ant-picker-time-panel-cell-inner {
+  background: var(--yoco-row-hover) !important;
+}
+
+.dark .ant-picker-dropdown .ant-picker-footer {
+  border-color: var(--yoco-border-subtle) !important;
+}
+
+.dark .ant-picker-dropdown .ant-picker-now-btn,
+.dark .ant-picker-dropdown .ant-picker-ok .ant-btn {
+  color: var(--yoco-primary) !important;
+}
+
+/* Table toolbar status filter chips */
+.yoco-filter-chip {
+  cursor: pointer;
+  appearance: none;
+  border-radius: 0.25rem;
+  border-width: 1px;
+  border-style: solid;
+  padding: 0.25rem 1.25rem;
+  min-height: 2rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  box-shadow: 0 1px 2px var(--yoco-shadow);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.yoco-filter-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.yoco-filter-chip--selected {
+  border-color: #674d9f;
+  background-color: #674d9f;
+  color: #ffffff;
+}
+
+/* Light mode — white inactive chips (reference layout) */
+.yoco-filter-chip--default {
+  border-color: var(--yoco-border-subtle);
+  background-color: #ffffff;
+  color: var(--yoco-text);
+}
+
+.yoco-filter-chip--default:hover:not(:disabled) {
+  border-color: var(--yoco-primary);
+  background-color: var(--yoco-row-hover);
+  color: var(--yoco-text);
+}
+
+/* Dark mode — match pagination inactive page button (e.g. page 2) */
+html.dark .yoco-filter-chip--default {
+  border-color: var(--yoco-border-subtle);
+  background-color: var(--yoco-surface-elevated);
+  color: var(--yoco-text);
+}
+
+html.dark .yoco-filter-chip--default:hover:not(:disabled) {
+  border-color: var(--yoco-border);
+  background-color: var(--yoco-row-hover);
+  color: var(--yoco-text);
+}
+
+.yoco-table-toolbar-actions {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .yoco-table-toolbar-actions {
+    gap: 0.75rem;
+  }
+}
