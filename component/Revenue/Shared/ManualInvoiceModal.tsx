@@ -20,7 +20,7 @@ import {
   periodMonthsFromDates,
   planLabel,
 } from "@/lib/revenue/utils"
-import type { BillingCycle, HostelSubscription, InvoiceStatus, PlanTier } from "@/lib/revenue/types"
+import type { BillingCycle, HostelSubscription, PlanTier } from "@/lib/revenue/types"
 import dayjs from "dayjs"
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -44,7 +44,7 @@ export default function ManualInvoiceModal({
   const { createManualInvoice, settings, planRates, customModuleRates, planModules } = useRevenue()
   const pricing = { planRates, customModuleRates, planModules }
   const [dueDate, setDueDate] = useState("")
-  const [status, setStatus] = useState<InvoiceStatus>("unpaid")
+  const [status, setStatus] = useState<"paid" | "unpaid">("unpaid")
   const [cycle, setCycle] = useState<BillingCycle | "">("")
   const [plan, setPlan] = useState<PlanTier>(hostel.plan ?? "ELITE")
   const [students, setStudents] = useState(String(hostel.studentCount))
@@ -176,7 +176,7 @@ export default function ManualInvoiceModal({
               fullWidth
               ariaLabel="Status"
               value={status}
-              onChange={(v) => setStatus(v as InvoiceStatus)}
+              onChange={(v) => setStatus(v as "paid" | "unpaid")}
               options={[
                 { value: "unpaid", label: "Unpaid" },
                 { value: "paid", label: "Paid" },
