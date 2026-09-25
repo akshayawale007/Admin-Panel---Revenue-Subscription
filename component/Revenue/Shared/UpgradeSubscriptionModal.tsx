@@ -123,6 +123,7 @@ export default function UpgradeSubscriptionModal({
   const [cycleStart, setCycleStart] = useState("")
   const [cycleEnd, setCycleEnd] = useState("")
   const [startAsTrial, setStartAsTrial] = useState(false)
+  const [trialDays, setTrialDays] = useState(30)
   const initKey = useRef<string | null>(null)
 
   const activated = hostel.activatedStudentCount ?? hostel.studentCount
@@ -157,6 +158,7 @@ export default function UpgradeSubscriptionModal({
     setCycleStart("")
     setCycleEnd("")
     setStartAsTrial(false)
+    setTrialDays(30)
   }
 
   useEffect(() => {
@@ -179,6 +181,7 @@ export default function UpgradeSubscriptionModal({
     setCycleStart("")
     setCycleEnd("")
     setStartAsTrial(false)
+    setTrialDays(30)
     setStep(0)
   }, [open, hostel.hostelId, hostel.studentCount, hostel.activeModules, initialKind, initialPlan, allowedInitialPlan, seatChangeLocked])
 
@@ -310,6 +313,7 @@ export default function UpgradeSubscriptionModal({
         subscriptionStartDate: startAsTrial || inPeriodActive ? undefined : cycleStart || undefined,
         renewalDate: startAsTrial || inPeriodActive ? undefined : cycleEnd || undefined,
         startTrial: startAsTrial || undefined,
+        trialDays: startAsTrial ? Math.max(1, Math.floor(trialDays) || 30) : undefined,
       })
     } else {
       if (decreaseLocked && studentDelta < 0) return
@@ -394,7 +398,7 @@ export default function UpgradeSubscriptionModal({
       {
         label: "Invoice total",
         value: startAsTrial ? formatINR(0) : invoiceTotals.total,
-        hint: startAsTrial ? `${settings.defaultTrialDays}-day trial · no charge` : `Includes GST ${gstPct}`,
+        hint: startAsTrial ? `${Math.max(1, Math.floor(trialDays) || 30)}-day trial · no charge` : `Includes GST ${gstPct}`,
         tone: "total" as const,
       },
     ],
@@ -409,7 +413,7 @@ export default function UpgradeSubscriptionModal({
       {
         title: "This invoice",
         lines: startAsTrial
-          ? [{ label: "Trial", value: `${settings.defaultTrialDays} days`, hint: "₹0 until paid conversion" }]
+          ? [{ label: "Trial", value: `${Math.max(1, Math.floor(trialDays) || 30)} days`, hint: "₹0 until paid conversion" }]
           : inPeriodActive
             ? [
                 { label: "Billing period", value: currentRange },
@@ -752,7 +756,20 @@ export default function UpgradeSubscriptionModal({
                           checked={startAsTrial}
                           onChange={(e) => setStartAsTrial(e.target.checked)}
                         />
-                        Start as a {settings.defaultTrialDays}-day trial
+                        Start as a trial
+                      </label>
+                    ) : null}
+                    {deactivated && startAsTrial ? (
+                      <label className="rounded-xl border border-(--yoco-border-subtle) px-3 py-2">
+                        <span className="text-[11px] text-(--yoco-text-muted)">Trial days</span>
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          className="mt-0 block w-full border-0 bg-transparent p-0 text-lg font-semibold text-(--yoco-text) outline-none"
+                          value={trialDays}
+                          onChange={(e) => setTrialDays(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                        />
                       </label>
                     ) : null}
                     {showBillingPeriod ? (

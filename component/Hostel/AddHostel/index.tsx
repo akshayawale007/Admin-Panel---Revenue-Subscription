@@ -29,7 +29,7 @@ const AddHostel = () => {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const router = useRouter()
   const { currentHostel, saveHostel, setDraftDocs } = useHostel()
-  const { getHostel: getSubscription, upsertSubscription, settings } = useRevenue()
+  const { getHostel: getSubscription, upsertSubscription } = useRevenue()
 
   const {
     register,
@@ -54,6 +54,7 @@ const AddHostel = () => {
       subscriptionStartDate: "",
       subscriptionRenewalDate: "",
       subscriptionTrial: true,
+      subscriptionTrialDays: 30,
       subscriptionBillingCycle: undefined,
     } as unknown as hostelPayload,
     resolver: yupResolver(hostelSchema) as never,
@@ -88,7 +89,8 @@ const AddHostel = () => {
       setValue("subscriptionStudentCount", 50)
       setValue("subscriptionModules", DEFAULT_PLAN_MODULES.ELITE)
       setValue("subscriptionStartDate", start)
-      setValue("subscriptionRenewalDate", dayjs(start).add(settings.defaultTrialDays, "day").format("YYYY-MM-DD"))
+      setValue("subscriptionTrialDays", 30)
+      setValue("subscriptionRenewalDate", dayjs(start).add(30, "day").format("YYYY-MM-DD"))
       setValue("subscriptionTrial", true)
       setValue("subscriptionBillingCycle", undefined)
       return
@@ -150,11 +152,12 @@ const AddHostel = () => {
       setValue("subscriptionStudentCount", 50)
       setValue("subscriptionModules", DEFAULT_PLAN_MODULES.ELITE)
       setValue("subscriptionStartDate", start)
-      setValue("subscriptionRenewalDate", dayjs(start).add(settings.defaultTrialDays, "day").format("YYYY-MM-DD"))
+      setValue("subscriptionTrialDays", 30)
+      setValue("subscriptionRenewalDate", dayjs(start).add(30, "day").format("YYYY-MM-DD"))
       setValue("subscriptionTrial", true)
       setValue("subscriptionBillingCycle", undefined)
     }
-  }, [currentHostel, getSubscription, setDraftDocs, setValue, settings.defaultTrialDays])
+  }, [currentHostel, getSubscription, setDraftDocs, setValue])
 
   useEffect(() => {
     const container = scrollRef.current
@@ -192,10 +195,10 @@ const AddHostel = () => {
     const saved = saveHostel(values as never)
     if (!isEdit) {
       const trial = Boolean(values.subscriptionTrial)
+      const trialDays = Math.max(1, Math.floor(Number(values.subscriptionTrialDays) || 30))
       const start = values.subscriptionStartDate || dayjs().format("YYYY-MM-DD")
       const renewal =
-        values.subscriptionRenewalDate ||
-        dayjs(start).add(settings.defaultTrialDays, "day").format("YYYY-MM-DD")
+        values.subscriptionRenewalDate || dayjs(start).add(trialDays, "day").format("YYYY-MM-DD")
       upsertSubscription({
         hostel: {
           hostelId: saved._id,
@@ -212,6 +215,7 @@ const AddHostel = () => {
         startDate: start,
         renewalDate: renewal,
         trial,
+        trialDays: trial ? trialDays : undefined,
         billingCycle: trial ? undefined : values.subscriptionBillingCycle ?? undefined,
       })
     }

@@ -66,6 +66,8 @@ type TableProps<T> = {
   resetSelectionKey?: string | number
   /** When false, the table body does not scroll horizontally */
   overflowX?: boolean
+  /** Tighter horizontal padding so a wide table fits without sideways scroll */
+  compact?: boolean
   /** Optional second row rendered under each data row (single cell, full colspan) */
   renderSubRow?: (row: T) => ReactNode
 }
@@ -94,6 +96,7 @@ export default function CommonTable<T extends { _id?: string }>({
   exportColumnsConfig,
   resetSelectionKey,
   overflowX = true,
+  compact = false,
   renderSubRow,
 }: TableProps<T>) {
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
@@ -320,9 +323,9 @@ export default function CommonTable<T extends { _id?: string }>({
                         ...(overflowX ? { minWidth: colSize } : {}),
                         ...(meta?.ellipsis ? { maxWidth: colSize } : {}),
                       }}
-                      className={`px-2 py-3 text-xs font-bold tracking-wide text-(--yoco-text-muted) uppercase first:pl-5 last:pr-5 ${
-                        isCenter ? "text-center" : "text-left"
-                      }`}
+                      className={`${compact ? "px-1 py-2 first:pl-2 last:pr-2" : "px-2 py-3 first:pl-5 last:pr-5"} text-xs font-bold text-(--yoco-text-muted) uppercase ${
+                        compact ? "tracking-normal" : "tracking-wide"
+                      } ${isCenter ? "text-center" : "text-left"}`}
                     >
                       {flexRender(header.column.columnDef.header, header.getContext())}
                     </th>
@@ -368,7 +371,7 @@ export default function CommonTable<T extends { _id?: string }>({
                         return (
                           <td
                             key={cell.id}
-                            className={`py-3 text-sm text-(--yoco-text) first:pl-5 last:pr-5 ${isCenter ? "px-2" : "px-4"}`}
+                            className={`${compact ? "px-1 py-2 first:pl-2 last:pr-2" : `py-3 first:pl-5 last:pr-5 ${isCenter ? "px-2" : "px-4"}`} text-sm text-(--yoco-text)`}
                             style={{
                               width: colSize,
                               ...(overflowX ? { minWidth: colSize } : {}),

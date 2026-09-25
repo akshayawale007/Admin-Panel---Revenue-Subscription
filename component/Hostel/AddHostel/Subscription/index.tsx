@@ -1,25 +1,34 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRevenue } from "@/component/Revenue/RevenueProvider"
 import { MODULE_CATALOG, MODULE_PILL_CURRENT, PLAN_COLORS, TIER_ORDER } from "@/lib/revenue/constants"
 import PlanBadge from "@/component/Revenue/Shared/PlanBadge"
+import InvoicePreviewModal from "@/component/Revenue/Shared/InvoicePreviewModal"
+import Button from "@/component/Common/Button/Button"
 import {
   billedRateFor,
   billingCycleLabel,
   calcARR,
+  calcPeriodValue,
+  defaultInvoiceDueDate,
   formatDate,
   formatINR,
   formatRate,
+  invoiceTotalsFromGross,
   isTrialSubscription,
+  periodMonthsFromDates,
   planLabel,
   subscriptionLifecycleCaption,
 } from "@/lib/revenue/utils"
-import type { BillingCycle, PlanTier } from "@/lib/revenue/types"
+import type { BillingCycle, HostelSubscription, Invoice, PlanTier } from "@/lib/revenue/types"
 import type { HostelFormProps } from "../formTypes"
 import BillingPeriodPicker from "./BillingPeriodPicker"
+import ToggleSwitch from "@/component/Common/Toggle/Toggle"
 import dayjs from "dayjs"
+
+const FORM_TRIAL_DAYS = 30
 
 const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }: HostelFormProps) => {
   const { planModules, planRates, customModuleRates, settings, getHostel } = useRevenue()
@@ -27,6 +36,7 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
   const plan = (watch("subscriptionPlan") ?? "ELITE") as PlanTier
   const count = Number(watch("subscriptionStudentCount") ?? 50)
   const trial = Boolean(watch("subscriptionTrial"))
+  const trialDays = Math.max(0, Math.floor(Number(watch("subscriptionTrialDays")) || 0))
   const cycle = watch("subscriptionBillingCycle") as BillingCycle | undefined
   const start = watch("subscriptionStartDate") ?? ""
   const renewal = watch("subscriptionRenewalDate") ?? ""
@@ -34,6 +44,75 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
   const annual = trial ? 0 : calcARR(count, billedRateFor(plan, selectedModules, { planRates, customModuleRates, planModules }), "active")
   const planIncluded = new Set(plan === "CUSTOM" ? selectedModules : (planModules[plan] ?? []))
   const selectedSet = new Set(selectedModules)
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const hostelName = watch("hostelName") || "New hostel"
+  const cityValue = watch("city")
+  const stateValue = watch("state")
+  const cityLabel = cityValue?.name || cityValue?.label || ""
+  const stateLabel = stateValue?.name || stateValue?.label || ""
+  const periodReady = Boolean(start && renewal && dayjs(renewal).isAfter(dayjs(start), "day") && count >= 1)
+  const canPreview = periodReady && (!trial || trialDays >= 1)
+
+  const preview = useMemo(() => {
+    const rate = trial ? 0 : billedRateFor(plan, selectedModules, { planRates, customModuleRates, planModules })
+    const gross = trial || !periodReady ? 0 : calcPeriodValue(count, rate, periodMonthsFromDates(start, renewal), "active")
+    const totals = invoiceTotalsFromGross({
+      gross,
+      sameState: true,
+      gstRate: settings.gstRate,
+      cgstRate: settings.cgstRate,
+      sgstRate: settings.sgstRate,
+    })
+    const generated = dayjs().format("YYYY-MM-DD")
+    const invoice: Invoice = {
+      id: "preview",
+      invoiceNo: "Assigned on save",
+      upgradeRequestNo: "Assigned on save",
+      billingPeriodStart: start,
+      billingPeriodEnd: renewal,
+      students: count,
+      amount: totals.taxable,
+      gst: totals.gst,
+      total: totals.total,
+      status: trial ? "paid" : "unpaid",
+      dateGenerated: generated,
+      sameState: true,
+      dueDate: defaultInvoiceDueDate(generated),
+      modules: selectedModules,
+      plan,
+      rate,
+      invoiceType: "annual_subscription",
+      billingCycle: cycle || undefined,
+    }
+    const hostel = {
+      name: hostelName,
+      city: cityLabel,
+      state: stateLabel,
+      hostelCode: watch("hostelCode") || "—",
+      adminName: hostelName,
+      adminPhone: watch("contact1") || "—",
+    } as HostelSubscription
+    return { invoice, hostel }
+  }, [
+    cityLabel,
+    count,
+    customModuleRates,
+    cycle,
+    hostelName,
+    periodReady,
+    plan,
+    planModules,
+    planRates,
+    renewal,
+    selectedModules,
+    settings.cgstRate,
+    settings.gstRate,
+    settings.sgstRate,
+    start,
+    stateLabel,
+    trial,
+    watch,
+  ])
 
   useEffect(() => {
     if (readOnly) return
@@ -194,52 +273,79 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
+        <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+          <div className="flex h-6 items-center gap-3">
             <label className="yoco-form-label font-normal">Trial period</label>
-            <button
-              type="button"
-              disabled={readOnly}
-              onClick={() => {
-                if (readOnly) return
-                const next = !trial
-                setValue("subscriptionTrial", next, { shouldValidate: true })
-                if (next) {
-                  const nextStart = dayjs().format("YYYY-MM-DD")
-                  setValue("subscriptionStartDate", nextStart, { shouldValidate: true })
+            <div className={readOnly ? "pointer-events-none opacity-70" : ""}>
+                <ToggleSwitch
+                  compact
+                  enabled={trial}
+                onChange={(next) => {
+                  if (readOnly) return
+                  setValue("subscriptionTrial", next, { shouldValidate: true })
+                  if (next) {
+                    const days = trialDays > 0 ? trialDays : FORM_TRIAL_DAYS
+                    const nextStart = dayjs().format("YYYY-MM-DD")
+                    setValue("subscriptionTrialDays", days, { shouldValidate: true })
+                    setValue("subscriptionStartDate", nextStart, { shouldValidate: true })
+                    setValue(
+                      "subscriptionRenewalDate",
+                      dayjs(nextStart).add(days, "day").format("YYYY-MM-DD"),
+                      { shouldValidate: true }
+                    )
+                    setValue("subscriptionBillingCycle", undefined, { shouldValidate: true })
+                  } else {
+                    const nextStart = dayjs().format("YYYY-MM-DD")
+                    setValue("subscriptionTrialDays", undefined, { shouldValidate: true })
+                    setValue("subscriptionStartDate", nextStart, { shouldValidate: true })
+                    setValue(
+                      "subscriptionRenewalDate",
+                      dayjs(nextStart).add(1, "month").format("YYYY-MM-DD"),
+                      { shouldValidate: true }
+                    )
+                    setValue("subscriptionBillingCycle", undefined, { shouldValidate: true })
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <label className="yoco-form-label flex h-6 items-center font-normal">
+            Billing period <span className="text-rose-500">*</span>
+          </label>
+          <div>
+            <input
+              type="number"
+              min={1}
+              step={1}
+              aria-label="Trial days"
+              disabled={readOnly || !trial}
+              className="yoco-form-input-field !h-10 !w-[58%] px-3 py-0 disabled:cursor-not-allowed disabled:opacity-70"
+              value={trial ? trialDays || "" : ""}
+              onChange={(event) => {
+                const days = Math.max(0, Math.floor(Number(event.target.value) || 0))
+                setValue("subscriptionTrialDays", days || undefined, { shouldValidate: true })
+                if (days > 0 && start) {
                   setValue(
                     "subscriptionRenewalDate",
-                    dayjs(nextStart).add(settings.defaultTrialDays, "day").format("YYYY-MM-DD"),
+                    dayjs(start).add(days, "day").format("YYYY-MM-DD"),
                     { shouldValidate: true }
                   )
-                  setValue("subscriptionBillingCycle", undefined, { shouldValidate: true })
-                } else {
-                  setValue("subscriptionStartDate", "", { shouldValidate: true })
-                  setValue("subscriptionRenewalDate", "", { shouldValidate: true })
-                  setValue("subscriptionBillingCycle", undefined, { shouldValidate: true })
                 }
               }}
-              className={`w-fit rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-all ${
-                trial
-                  ? "border-(--yoco-primary) bg-(--yoco-row-hover) ring-1 ring-(--yoco-primary)"
-                  : "border-(--yoco-border-subtle) hover:border-(--yoco-border)"
-              } ${readOnly ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
-            >
-              {`${settings.defaultTrialDays} days`}
-              <span className="mt-0.5 block text-[11px] font-medium text-(--yoco-text-muted)">
-                {trial ? "On · ₹0 invoice" : "Off"}
-              </span>
-            </button>
+            />
+            {errors.subscriptionTrialDays ? (
+              <p className="mt-1 text-xs font-semibold text-rose-500">{errors.subscriptionTrialDays.message}</p>
+            ) : null}
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="yoco-form-label font-normal">
-              Billing period <span className="text-rose-500">*</span>
-            </label>
+          <div>
             <BillingPeriodPicker
+              className="!h-10 !w-[58%]"
               start={start}
               end={renewal}
               cycle={cycle}
               disabled={readOnly}
+              lockedDurationDays={trial && trialDays > 0 ? trialDays : undefined}
+              minDate={trial && trialDays > 0 ? dayjs().format("YYYY-MM-DD") : undefined}
               onChange={(nextStart, nextEnd, nextCycle) => {
                 if (readOnly) return
                 setValue("subscriptionStartDate", nextStart, { shouldValidate: true })
@@ -248,7 +354,7 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
               }}
             />
             {errors.subscriptionStartDate || errors.subscriptionRenewalDate || errors.subscriptionBillingCycle ? (
-              <p className="text-xs font-semibold text-rose-500">
+              <p className="mt-1 text-xs font-semibold text-rose-500">
                 {errors.subscriptionBillingCycle?.message ??
                   errors.subscriptionStartDate?.message ??
                   errors.subscriptionRenewalDate?.message}
@@ -266,7 +372,7 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
               type="number"
               min={1}
               disabled={readOnly}
-              className="yoco-form-input-field px-3 py-2 disabled:cursor-not-allowed disabled:opacity-70"
+              className="yoco-form-input-field !h-10 !w-[58%] px-3 py-0 disabled:cursor-not-allowed disabled:opacity-70"
               {...register("subscriptionStudentCount", { valueAsNumber: true })}
             />
             <p className="text-xs text-(--yoco-text-muted)">
@@ -284,7 +390,7 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
             <input
               type="number"
               min={0}
-              className="yoco-form-input-field px-3 py-2"
+              className="yoco-form-input-field !h-10 !w-[58%] px-3 py-0"
               {...register("staffCount", { valueAsNumber: true })}
             />
             {errors.staffCount ? (
@@ -292,7 +398,18 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
             ) : null}
           </div>
         </div>
+
+        <div className="flex justify-end">
+          <Button title="View invoice" variant="secondary" disabled={!canPreview} onClick={() => setPreviewOpen(true)} />
+        </div>
       </div>
+      <InvoicePreviewModal
+        open={previewOpen}
+        setOpen={setPreviewOpen}
+        invoice={preview.invoice}
+        hostel={preview.hostel}
+        settings={settings}
+      />
     </div>
   )
 }

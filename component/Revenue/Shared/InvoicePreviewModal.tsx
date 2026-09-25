@@ -1,8 +1,8 @@
 "use client"
 
+import { useEffect } from "react"
 import Modal from "@/component/Common/Modal/Modal"
 import Button from "@/component/Common/Button/Button"
-import { toast } from "react-toastify"
 import type { HostelSubscription, Invoice, RevenueSettings, RevenueViewerRole } from "@/lib/revenue/types"
 import {
   formatDate,
@@ -25,6 +25,7 @@ type Props = {
   settings: RevenueSettings
   onConfirmSend?: () => void
   viewerRole?: RevenueViewerRole
+  autoPrint?: boolean
 }
 
 export default function InvoicePreviewModal({
@@ -35,14 +36,25 @@ export default function InvoicePreviewModal({
   settings,
   onConfirmSend,
   viewerRole = "admin",
+  autoPrint = false,
 }: Props) {
+  useEffect(() => {
+    if (!open || !autoPrint || !invoice) return
+    const timer = window.setTimeout(() => {
+      document.body.classList.add("printing-invoice")
+      window.print()
+      document.body.classList.remove("printing-invoice")
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [open, autoPrint, invoice])
+
   if (!invoice || !hostel) return null
 
   const totals = invoiceTotalsFromGross({
     gross: invoice.grossAmount ?? invoice.amount,
     discountType: invoice.discountType,
     discountValue: invoice.discountValue,
-    sameState: invoice.sameState,
+    sameState: true,
     gstRate: settings.gstRate,
     cgstRate: settings.cgstRate,
     sgstRate: settings.sgstRate,
@@ -50,12 +62,28 @@ export default function InvoicePreviewModal({
   })
   const gst = totals
   const modules = invoice.modules.map((k) => moduleByKey(k)?.name ?? k).join(", ")
-  const { cgstRate, sgstRate, gstRate } = gstRatesFromSettings(settings)
+  const { cgstRate, sgstRate } = gstRatesFromSettings(settings)
 
   return (
     <Modal open={open} setOpen={setOpen} width="3xl" height="90vh">
+      <style>{`
+        @media print {
+          body.printing-invoice * { visibility: hidden !important; }
+          body.printing-invoice #invoice-print-sheet,
+          body.printing-invoice #invoice-print-sheet * { visibility: visible !important; }
+          body.printing-invoice #invoice-print-sheet {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            box-shadow: none !important;
+            border: none !important;
+          }
+        }
+      `}</style>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-        <div className="mx-auto max-w-[210mm] border border-(--yoco-border-subtle) bg-white p-8 text-[#3d2d5c] shadow-sm">
+        <div id="invoice-print-sheet" className="mx-auto max-w-[210mm] border border-(--yoco-border-subtle) bg-white p-8 text-[#3d2d5c] shadow-sm">
           <div className="flex items-start justify-between gap-4 border-b border-(--yoco-border-subtle) pb-4">
             <div>
               {settings.logoDataUrl ? (
@@ -93,6 +121,10 @@ export default function InvoicePreviewModal({
 
           <table className="mt-6 w-full text-sm">
             <tbody>
+              <Row
+                label="Upgrade request ID"
+                value={invoice.invoiceType === "manual" ? "—" : invoice.upgradeRequestNo || "—"}
+              />
               <Row
                 label="Billing cycle"
                 value={invoicePeriodCycleLabel(invoice.billingPeriodStart, invoice.billingPeriodEnd)}
@@ -149,31 +181,21 @@ export default function InvoicePreviewModal({
               />
               <Row label="Active modules" value={modules || "—"} />
               {invoice.notes ? <Row label="Description" value={invoice.notes} /> : null}
-              {totals.discountOff > 0 ? (
-                <>
-                  <Row label="Gross before discount" value={formatINR(totals.gross)} />
-                  <Row
-                    label={
-                      invoice.discountType === "percent"
-                        ? `Discount (${invoice.discountValue}%)`
-                        : "Discount (flat)"
-                    }
-                    value={`−${formatINR(totals.discountOff)}`}
-                  />
-                  {invoice.discountReason ? <Row label="Discount reason" value={invoice.discountReason} /> : null}
-                  <Row label="Taxable amount" value={formatINR(totals.taxable)} />
-                </>
-              ) : (
-                <Row label="Subtotal before GST" value={formatINR(invoice.amount)} />
-              )}
-              {invoice.sameState ? (
-                <>
-                  <Row label={`CGST (${cgstRate}%)`} value={formatINR(gst.cgst)} />
-                  <Row label={`SGST (${sgstRate}%)`} value={formatINR(gst.sgst)} />
-                </>
-              ) : (
-                <Row label={`IGST (${gstRate}%)`} value={formatINR(gst.igst)} />
-              )}
+              <Row label="Subtotal before GST" value={formatINR(totals.gross || invoice.amount)} />
+              <Row
+                label={
+                  totals.discountOff > 0
+                    ? invoice.discountType === "percent"
+                      ? `Discount (${invoice.discountValue}%)`
+                      : "Discount (flat)"
+                    : "Discount"
+                }
+                value={totals.discountOff > 0 ? `−${formatINR(totals.discountOff)}` : formatINR(0)}
+              />
+              {invoice.discountReason ? <Row label="Discount reason" value={invoice.discountReason} /> : null}
+              <Row label="Taxable amount" value={formatINR(totals.taxable)} />
+              <Row label={`CGST (${cgstRate}%) on taxable amount`} value={formatINR(gst.cgst)} />
+              <Row label={`SGST (${sgstRate}%) on taxable amount`} value={formatINR(gst.sgst)} />
               {invoice.proRatedAdjustment ? (
                 <Row
                   label="Pro-rated adjustment"
@@ -215,7 +237,11 @@ export default function InvoicePreviewModal({
           ) : null}
           <Button
             title="Download PDF"
-            onClick={() => toast.success("PDF downloaded", { autoClose: 3000 })}
+            onClick={() => {
+              document.body.classList.add("printing-invoice")
+              window.print()
+              document.body.classList.remove("printing-invoice")
+            }}
           />
           <Button title="Close" variant="secondary" onClick={() => setOpen(false)} />
         </div>

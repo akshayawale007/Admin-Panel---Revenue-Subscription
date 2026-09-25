@@ -11,7 +11,7 @@ import StatusBadge from "@/component/Revenue/Shared/StatusBadge"
 import ConfirmDialog from "@/component/Revenue/Shared/ConfirmDialog"
 import RequestViewModal from "./RequestViewModal"
 import { useRevenue } from "@/component/Revenue/RevenueProvider"
-import { formatDate, requestTypeLabel } from "@/lib/revenue/utils"
+import { formatDate, requestSerial, requestTypeLabel } from "@/lib/revenue/utils"
 import type { HostelSubscription, PendingRequest, RevenueViewerRole } from "@/lib/revenue/types"
 
 export default function PendingRequestsTab({
@@ -29,10 +29,20 @@ export default function PendingRequestsTab({
   const [detail, setDetail] = useState<PendingRequest | null>(null)
   const [approveTarget, setApproveTarget] = useState<PendingRequest | null>(null)
 
-  const rows = hostel.pendingRequests.map((r) => ({ ...r, _id: r.id }))
+  const rows = [...hostel.pendingRequests]
+    .sort((a, b) => {
+      if (a.submittedOn !== b.submittedOn) return a.submittedOn < b.submittedOn ? 1 : -1
+      return requestSerial(b.requestNo) - requestSerial(a.requestNo)
+    })
+    .map((r) => ({ ...r, _id: r.id }))
 
   const columns = useMemo<ColumnDef<PendingRequest & { _id: string }>[]>(
     () => [
+      {
+        header: "Up. Req. Id",
+        size: 110,
+        cell: ({ row }) => row.original.requestNo,
+      },
       {
         header: "Request type",
         size: 220,
@@ -131,12 +141,12 @@ export default function PendingRequestsTab({
           if (!open) setApproveTarget(null)
         }}
         title="Approve this request?"
-        description="The subscription will update now or at the next renewal, and any new invoice will be generated."
-        confirmLabel="Mark approved"
+        description="The subscription updates and an invoice is created for this request."
+        confirmLabel="Mark as approved"
         noteEnabled
         onConfirm={(note) => {
           if (!approveTarget) return
-          approveRequest(hostel.hostelId, approveTarget.id, note)
+          approveRequest(hostel.hostelId, approveTarget.id, note, { createInvoice: true })
           setApproveTarget(null)
         }}
       />

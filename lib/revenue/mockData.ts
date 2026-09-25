@@ -33,13 +33,21 @@ const proof = (partial: PaymentProof): PaymentProof => partial
 
 const DESIGNATIONS: RequestedByDesignation[] = ["Warden", "Caretaker", "Student", "Parent"]
 let designationCursor = 0
+let requestSerialCursor = 0
 
 const req = (
-  partial: Omit<PendingRequest, "requestedByDesignation"> & { requestedByDesignation?: RequestedByDesignation }
-): PendingRequest => ({
-  requestedByDesignation: DESIGNATIONS[designationCursor++ % DESIGNATIONS.length],
-  ...partial,
-})
+  partial: Omit<PendingRequest, "requestedByDesignation" | "requestNo"> & {
+    requestedByDesignation?: RequestedByDesignation
+    requestNo?: string
+  }
+): PendingRequest => {
+  requestSerialCursor += 1
+  return {
+    requestNo: partial.requestNo ?? `UR-${String(requestSerialCursor).padStart(4, "0")}`,
+    requestedByDesignation: DESIGNATIONS[designationCursor++ % DESIGNATIONS.length],
+    ...partial,
+  }
+}
 
 function hostel(
   row: Omit<HostelSubscription, "annualValue" | "_id" | "activatedStudentCount" | "addedStudentCount" | "contractRate"> & {
@@ -51,6 +59,41 @@ function hostel(
 ): HostelSubscription {
   const rate = row.status === "trial" ? 0 : billedRateFor(row.plan ?? null, row.activeModules)
   const contractRate = row.contractRate ?? rate
+  const existingRequest = row.pendingRequests.find((request) => request.requestNo)
+  const createdRequests: PendingRequest[] = []
+  const invoices = row.invoices.map((invoice) => {
+    let linkedRequest = existingRequest
+    if (invoice.invoiceType !== "manual" && !invoice.upgradeRequestNo && !existingRequest) {
+      linkedRequest = req({
+        id: `pr-${invoice.id}`,
+        type: "new_subscription",
+        requestedBy: row.adminName,
+        submittedOn: invoice.dateGenerated,
+        status: "approved",
+        planRequested: invoice.plan,
+        studentCount: invoice.students,
+        billingCycle: invoice.billingCycle ?? row.billingCycle,
+        subscriptionStartDate: invoice.billingPeriodStart,
+        renewalDate: invoice.billingPeriodEnd,
+        details: `Subscription invoice ${invoice.invoiceNo}`,
+      })
+      createdRequests.push(linkedRequest)
+    }
+    const withCycle = {
+      ...invoice,
+      billingCycle: invoice.billingCycle ?? row.billingCycle,
+      ...(invoice.invoiceType !== "manual" && linkedRequest && !invoice.upgradeRequestNo
+        ? { upgradeRequestId: invoice.upgradeRequestId ?? linkedRequest.id, upgradeRequestNo: linkedRequest.requestNo }
+        : {}),
+    }
+    return invoice.invoiceType === "annual_subscription"
+      ? {
+          ...withCycle,
+          billingPeriodStart: row.subscriptionStartDate,
+          billingPeriodEnd: row.renewalDate,
+        }
+      : withCycle
+  })
   return {
     ...row,
     _id: row._id ?? row.hostelId,
@@ -58,16 +101,8 @@ function hostel(
     addedStudentCount: row.addedStudentCount ?? 0,
     contractRate,
     annualValue: calcARR(row.studentCount, contractRate, row.status),
-    invoices: row.invoices.map((invoice) => {
-      const withCycle = { ...invoice, billingCycle: invoice.billingCycle ?? row.billingCycle }
-      return invoice.invoiceType === "annual_subscription"
-        ? {
-            ...withCycle,
-            billingPeriodStart: row.subscriptionStartDate,
-            billingPeriodEnd: row.renewalDate,
-          }
-        : withCycle
-    }),
+    pendingRequests: [...row.pendingRequests, ...createdRequests],
+    invoices,
   }
 }
 
@@ -122,7 +157,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h1-1",
-        invoiceNo: "YS-1001",
+        invoiceNo: "yoco/inv/2025-26/0002",
         billingPeriodStart: "2025-08-01",
         billingPeriodEnd: "2026-07-31",
         students: 180,
@@ -148,7 +183,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
       }),
     ],
     auditTrail: [
-      ev("a-h1-2", "Invoice YS-1001 generated", "2025-07-20T10:12:00", "System"),
+      ev("a-h1-2", "Invoice yoco/inv/2025-26/0002 generated", "2025-07-20T10:12:00", "System"),
       ev("a-h1-1", "Premium plan activated", "2025-08-01T09:00:00"),
     ],
     notes: [
@@ -175,7 +210,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h2-1",
-        invoiceNo: "YS-1012",
+        invoiceNo: "yoco/inv/2025-26/0003",
         billingPeriodStart: "2025-09-01",
         billingPeriodEnd: "2026-02-28",
         students: 240,
@@ -236,7 +271,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h3-1",
-        invoiceNo: "YS-1088",
+        invoiceNo: "yoco/inv/2026-27/0001",
         billingPeriodStart: "2026-06-01",
         billingPeriodEnd: "2026-08-31",
         students: 320,
@@ -254,7 +289,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     ],
     paymentProofs: [],
     auditTrail: [
-      ev("a-h3-2", "Invoice YS-1088 marked as paid", "2026-06-02T12:00:00"),
+      ev("a-h3-2", "Invoice yoco/inv/2026-27/0001 marked as paid", "2026-06-02T12:00:00"),
       ev("a-h3-1", "Elite plan activated", "2026-06-01T09:00:00"),
     ],
     notes: [note("n-h3-1", "High-value account. Call before any plan change.", "2026-06-10T09:15:00")],
@@ -280,7 +315,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h4-1",
-        invoiceNo: "YS-1033",
+        invoiceNo: "yoco/inv/2025-26/0007",
         billingPeriodStart: "2026-01-15",
         billingPeriodEnd: "2027-01-14",
         students: 95,
@@ -333,7 +368,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h5-1",
-        invoiceNo: "YS-1020",
+        invoiceNo: "yoco/inv/2025-26/0005",
         billingPeriodStart: "2025-11-01",
         billingPeriodEnd: "2026-10-31",
         students: 410,
@@ -383,7 +418,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h6-1",
-        invoiceNo: "YS-1101",
+        invoiceNo: "yoco/inv/2026-27/0003",
         billingPeriodStart: "2026-08-10",
         billingPeriodEnd: "2026-09-09",
         students: 150,
@@ -436,7 +471,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h7-1",
-        invoiceNo: "YS-1108",
+        invoiceNo: "yoco/inv/2026-27/0004",
         billingPeriodStart: "2026-08-20",
         billingPeriodEnd: "2026-09-19",
         students: 70,
@@ -481,7 +516,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h8-1",
-        invoiceNo: "YS-0990",
+        invoiceNo: "yoco/inv/2025-26/0001",
         billingPeriodStart: "2025-07-20",
         billingPeriodEnd: "2026-07-19",
         students: 160,
@@ -536,7 +571,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h9-1",
-        invoiceNo: "YS-1044",
+        invoiceNo: "yoco/inv/2025-26/0006",
         billingPeriodStart: "2026-01-10",
         billingPeriodEnd: "2026-07-09",
         students: 88,
@@ -580,7 +615,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h10-1",
-        invoiceNo: "YS-0781",
+        invoiceNo: "yoco/inv/2024-25/0001",
         billingPeriodStart: "2024-06-01",
         billingPeriodEnd: "2025-05-31",
         students: 200,
@@ -636,7 +671,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h11-1",
-        invoiceNo: "YS-1018",
+        invoiceNo: "yoco/inv/2025-26/0004",
         billingPeriodStart: "2025-10-01",
         billingPeriodEnd: "2025-12-31",
         students: 54,
@@ -679,7 +714,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h12-1",
-        invoiceNo: "YS-1114",
+        invoiceNo: "yoco/inv/2026-27/0005",
         billingPeriodStart: "2026-09-01",
         billingPeriodEnd: "2027-08-31",
         students: 120,
@@ -750,7 +785,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h13-1",
-        invoiceNo: "YS-1116",
+        invoiceNo: "yoco/inv/2026-27/0006",
         billingPeriodStart: "2026-09-15",
         billingPeriodEnd: "2027-09-14",
         students: 210,
@@ -794,7 +829,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h14-1",
-        invoiceNo: "YS-1060",
+        invoiceNo: "yoco/inv/2025-26/0008",
         billingPeriodStart: "2026-04-01",
         billingPeriodEnd: "2027-03-31",
         students: 60,
@@ -849,7 +884,7 @@ export const INITIAL_HOSTELS: HostelSubscription[] = [
     invoices: [
       inv({
         id: "inv-h15-1",
-        invoiceNo: "YS-1090",
+        invoiceNo: "yoco/inv/2026-27/0002",
         billingPeriodStart: "2026-07-01",
         billingPeriodEnd: "2026-07-31",
         students: 40,

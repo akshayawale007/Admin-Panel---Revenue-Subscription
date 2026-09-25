@@ -422,6 +422,41 @@ export const invoiceTotalsFromGross = (params: {
   return { gross, discountOff, taxable, gstBase, ...gst }
 }
 
+const FY_INVOICE = /^(?:yoco\/inv\/)?(\d{4}-\d{2})\/(\d+)$/
+
+export const financialYearLabel = (date?: string | Date): string => {
+  const value = date ? dayjs(date) : dayjs()
+  const startYear = value.month() >= 3 ? value.year() : value.year() - 1
+  const endShort = String((startYear + 1) % 100).padStart(2, "0")
+  return `${startYear}-${endShort}`
+}
+
+export const formatInvoiceSerial = (serial: number, date?: string | Date): string => {
+  const serialText = String(Math.max(1, serial)).padStart(4, "0")
+  return `yoco/inv/${financialYearLabel(date)}/${serialText}`
+}
+
+export const invoiceSerialInYear = (invoiceNo: string, fy = financialYearLabel()): number => {
+  const match = invoiceNo.match(FY_INVOICE)
+  if (!match || match[1] !== fy) return 0
+  return Number(match[2]) || 0
+}
+
+export const formatRequestNo = (serial: number): string => `UR-${String(Math.max(1, serial)).padStart(4, "0")}`
+
+export const requestSerial = (requestNo?: string): number => {
+  const match = requestNo?.match(/^UR-(\d+)$/)
+  return match ? Number(match[1]) : 0
+}
+
+export const unbilledApprovedRequests = <T extends { id: string; status: string }>(hostel: {
+  pendingRequests: T[]
+  invoices: { upgradeRequestId?: string }[]
+}) => {
+  const billed = new Set(hostel.invoices.flatMap((invoice) => (invoice.upgradeRequestId ? [invoice.upgradeRequestId] : [])))
+  return hostel.pendingRequests.filter((request) => request.status === "approved" && !billed.has(request.id))
+}
+
 export const daysUntil = (date: string): number => dayjs(date).startOf("day").diff(dayjs().startOf("day"), "day")
 
 export const monthsRemainingInCycle = (renewalDate: string, cycle: BillingCycle): number => {

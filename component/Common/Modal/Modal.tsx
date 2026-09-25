@@ -25,6 +25,7 @@ const heightMap = {
   "90vh": "h-[min(90dvh,100%)] max-h-full",
   "95vh": "h-[min(94dvh,100%)] max-h-full",
   screen: "h-full max-h-full",
+  fit: "h-[calc(100dvh-2rem)] max-h-[calc(100dvh-2rem)] overflow-hidden",
 }
 
 export default function Modal({
@@ -33,6 +34,7 @@ export default function Modal({
   children,
   width = "lg", // 👈 default width,
   height,
+  contentClassName = "px-5 py-5",
   closeOnOutsideClick = true,
 }: props) {
   const handleClose = () => {
@@ -57,7 +59,7 @@ export default function Modal({
               }`}
             >
               <div
-                className={`bg-(--yoco-surface-elevated) px-5 py-5 text-left ${
+                className={`bg-(--yoco-surface-elevated) text-left ${contentClassName} ${
                   height ? "flex min-h-0 flex-1 flex-col overflow-hidden" : ""
                 }`}
               >

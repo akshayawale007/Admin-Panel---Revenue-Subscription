@@ -14,8 +14,11 @@ type Props = {
   end: string
   cycle?: BillingCycle | ""
   lockedDurationDays?: number
+  minDate?: string
   showCyclePresets?: boolean
   disabled?: boolean
+  fullWidth?: boolean
+  className?: string
   onChange: (start: string, end: string, cycle?: BillingCycle | "") => void
 }
 
@@ -29,8 +32,11 @@ export default function BillingPeriodPicker({
   end,
   cycle: _cycle = "",
   lockedDurationDays,
+  minDate,
   showCyclePresets,
   disabled,
+  fullWidth,
+  className,
   onChange,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -121,7 +127,11 @@ export default function BillingPeriodPicker({
     closeWithoutSave()
   }
 
+  const earliest = minDate && dayjs(minDate).isValid() ? dayjs(minDate).startOf("day") : null
+  const isBeforeMin = (day: Dayjs) => Boolean(earliest && day.isBefore(earliest, "day"))
+
   const pick = (day: Dayjs) => {
+    if (isBeforeMin(day)) return
     const value = day.format("YYYY-MM-DD")
     if (lockedDurationDays) {
       setDraftStart(value)
@@ -156,6 +166,7 @@ export default function BillingPeriodPicker({
 
     if (isStart || isEnd) return "bg-(--yoco-primary) text-white"
     if (inRange) return "bg-[#EDE8F4] text-(--yoco-primary)"
+    if (isBeforeMin(day)) return "cursor-not-allowed text-(--yoco-text-muted) opacity-30"
     if (!inMonth) return "text-(--yoco-text-muted) opacity-40"
     return "text-(--yoco-text) hover:bg-(--yoco-surface-muted)"
   }
@@ -206,8 +217,9 @@ export default function BillingPeriodPicker({
               <button
                 key={day.format("YYYY-MM-DD")}
                 type="button"
+                disabled={isBeforeMin(day)}
                 onClick={() => pick(day)}
-                className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${tone(day)}`}
+                className={`mx-auto flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold disabled:cursor-not-allowed ${tone(day)}`}
               >
                 {day.date()}
               </button>
@@ -237,7 +249,7 @@ export default function BillingPeriodPicker({
           ) : null}
           <p className="mt-2 text-[11px] text-(--yoco-text-muted)">
             {lockedDurationDays
-              ? "Select a start date, then Save. Renewal is 30 days later."
+              ? `Select a start date on or after today, then Save. Renewal is ${lockedDurationDays} days later. Future months stay open.`
               : draftEnd
                 ? `${formatDate(draftStart)} – ${formatDate(draftEnd)}. Save to apply.`
                 : draftStart
@@ -254,7 +266,7 @@ export default function BillingPeriodPicker({
     ) : null
 
   return (
-    <div ref={rootRef} className="w-fit max-w-full">
+    <div ref={rootRef} className={className ?? (fullWidth ? "w-full" : "w-fit max-w-full")}>
       <button
         type="button"
         disabled={disabled}
@@ -262,7 +274,9 @@ export default function BillingPeriodPicker({
           if (disabled) return
           setOpen((v) => !v)
         }}
-        className="yoco-form-input-field !inline-flex !w-fit max-w-full items-center gap-2 px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-70"
+        className={`yoco-form-input-field !inline-flex items-center gap-2 px-3 text-left disabled:cursor-not-allowed disabled:opacity-70 ${
+          className || fullWidth ? "h-full w-full justify-between py-0" : "!w-fit max-w-full py-2"
+        }`}
       >
         <span className="whitespace-nowrap text-sm">{triggerLabel}</span>
         <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-(--yoco-text-muted)" aria-hidden>

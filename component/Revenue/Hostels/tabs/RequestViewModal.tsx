@@ -44,6 +44,7 @@ export default function RequestViewModal({
         {request ? (
           <div className="mt-4 flex flex-col gap-5">
             <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Request ID">{request.requestNo}</Field>
               <Field label="Request type">{requestTypeLabel(request.type)}</Field>
               <Field label="Status">
                 <StatusBadge status={request.status} />

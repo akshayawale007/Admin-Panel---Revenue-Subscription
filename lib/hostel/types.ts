@@ -143,5 +143,6 @@ export type HostelFormValues = {
   subscriptionStartDate?: string
   subscriptionRenewalDate?: string
   subscriptionTrial?: boolean
+  subscriptionTrialDays?: number
   subscriptionBillingCycle?: "QUARTERLY" | "SEMIANNUAL" | "ANNUAL"
 }

@@ -7,10 +7,16 @@ import {
   SparklesIcon,
   DocumentTextIcon,
   CurrencyRupeeIcon,
+  ClockIcon,
 } from "@heroicons/react/24/outline"
 
 const sidebarRoutes = () => {
   const routes = [
+    {
+      title: "Latest changes",
+      link: "/latest-changes/",
+      icon: <ClockIcon className="w-5" />,
+    },
     {
       title: "Revenue/Subscriptions",
       link: "/revenue/",

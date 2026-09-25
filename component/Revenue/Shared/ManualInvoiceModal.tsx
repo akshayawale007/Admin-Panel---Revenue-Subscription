@@ -13,14 +13,16 @@ import {
   billingCycleLabel,
   calcPeriodValue,
   defaultInvoiceDueDate,
+  formatDate,
   formatINR,
   gstRatesFromSettings,
   invoiceTotalsFromGross,
   matchBillingCycle,
+  moduleByKey,
   periodMonthsFromDates,
   planLabel,
 } from "@/lib/revenue/utils"
-import type { BillingCycle, HostelSubscription, PlanTier } from "@/lib/revenue/types"
+import type { BillingCycle, HostelSubscription, Invoice, PlanTier } from "@/lib/revenue/types"
 import dayjs from "dayjs"
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -36,15 +38,17 @@ export default function ManualInvoiceModal({
   open,
   setOpen,
   hostel,
+  invoice,
 }: {
   open: boolean
   setOpen: (open: boolean) => void
   hostel: HostelSubscription
+  invoice?: Invoice | null
 }) {
-  const { createManualInvoice, settings, planRates, customModuleRates, planModules } = useRevenue()
+  const { createManualInvoice, updateManualInvoice, settings, planRates, customModuleRates, planModules } = useRevenue()
+  const editing = Boolean(invoice)
   const pricing = { planRates, customModuleRates, planModules }
   const [dueDate, setDueDate] = useState("")
-  const [status, setStatus] = useState<"paid" | "unpaid">("unpaid")
   const [cycle, setCycle] = useState<BillingCycle | "">("")
   const [plan, setPlan] = useState<PlanTier>(hostel.plan ?? "ELITE")
   const [students, setStudents] = useState(String(hostel.studentCount))
@@ -55,13 +59,29 @@ export default function ManualInvoiceModal({
   const [notes, setNotes] = useState("")
   const [gross, setGross] = useState("")
   const [grossDirty, setGrossDirty] = useState(false)
-  const [sameState, setSameState] = useState(true)
   const [discountMode, setDiscountMode] = useState<DiscountMode>("none")
   const [discountValue, setDiscountValue] = useState("")
   const [discountReason, setDiscountReason] = useState("")
 
   useEffect(() => {
     if (!open) return
+    if (invoice) {
+      setDueDate(invoice.dueDate)
+      setCycle(invoice.billingCycle || matchBillingCycle(invoice.billingPeriodStart, invoice.billingPeriodEnd) || "")
+      setPlan(invoice.plan ?? "ELITE")
+      setStudents(String(invoice.students))
+      setRate(String(invoice.rate))
+      setStart(invoice.billingPeriodStart)
+      setEnd(invoice.billingPeriodEnd)
+      setModules(invoice.modules)
+      setNotes(invoice.notes ?? "")
+      setGross(String(invoice.grossAmount ?? invoice.amount))
+      setGrossDirty(true)
+      setDiscountMode(invoice.discountType ?? "none")
+      setDiscountValue(invoice.discountValue != null ? String(invoice.discountValue) : "")
+      setDiscountReason(invoice.discountReason ?? "")
+      return
+    }
     const nextPlan = hostel.plan ?? "ELITE"
     const nextModules = hostel.activeModules
     const nextRate = billedRateFor(nextPlan, nextModules, pricing)
@@ -74,7 +94,6 @@ export default function ManualInvoiceModal({
       "active"
     )
     setDueDate(defaultInvoiceDueDate(dayjs().format("YYYY-MM-DD")))
-    setStatus("unpaid")
     setCycle(matchBillingCycle(nextStart, nextEnd) || hostel.billingCycle || "")
     setPlan(nextPlan)
     setStudents(String(hostel.studentCount))
@@ -85,13 +104,12 @@ export default function ManualInvoiceModal({
     setNotes("")
     setGross(suggested ? String(suggested) : "")
     setGrossDirty(false)
-    setSameState(true)
     setDiscountMode("none")
     setDiscountValue("")
     setDiscountReason("")
     // pricing object is derived from hostel/open reset only
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, hostel])
+  }, [open, hostel, invoice])
 
   const seatCount = Number(students) || 0
   const rateValue = Number(rate) || 0
@@ -99,9 +117,9 @@ export default function ManualInvoiceModal({
   const suggestedGross = calcPeriodValue(seatCount, rateValue, months, "active")
 
   useEffect(() => {
-    if (!open || grossDirty) return
+    if (!open || grossDirty || invoice) return
     setGross(suggestedGross ? String(suggestedGross) : "")
-  }, [open, grossDirty, suggestedGross])
+  }, [open, grossDirty, suggestedGross, invoice])
 
   const grossAmount = Number(gross) || 0
   const parsedDiscount = Number(discountValue) || 0
@@ -112,14 +130,14 @@ export default function ManualInvoiceModal({
         gross: grossAmount,
         discountType: hasDiscount ? discountMode : undefined,
         discountValue: hasDiscount ? parsedDiscount : undefined,
-        sameState,
+        sameState: true,
         gstRate: settings.gstRate,
         cgstRate: settings.cgstRate,
         sgstRate: settings.sgstRate,
       }),
-    [grossAmount, hasDiscount, discountMode, parsedDiscount, sameState, settings]
+    [grossAmount, hasDiscount, discountMode, parsedDiscount, settings]
   )
-  const { gstRate, cgstRate, sgstRate } = gstRatesFromSettings(settings)
+  const { cgstRate, sgstRate } = gstRatesFromSettings(settings)
   const invalidPeriod = !start || !end || !dayjs(end).isAfter(dayjs(start), "day")
   const invalidDiscount =
     hasDiscount && (discountMode === "percent" ? parsedDiscount > 100 : parsedDiscount > grossAmount)
@@ -147,7 +165,7 @@ export default function ManualInvoiceModal({
   return (
     <Modal open={open} setOpen={setOpen} width="3xl" height="90vh">
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
-        <p className="yoco-form-title text-base">INVOICE</p>
+        <p className="yoco-form-title text-base">{editing ? `Edit ${invoice?.invoiceNo}` : "INVOICE"}</p>
         <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
           <div>
             <p className="text-xs font-semibold uppercase text-(--yoco-text-muted)">Bill to</p>
@@ -168,20 +186,70 @@ export default function ManualInvoiceModal({
         </div>
 
         <div className="mt-6">
+          {editing ? (
+            <>
+              <Field label="Due date">
+                <p className="text-right font-semibold">{dueDate ? formatDate(dueDate) : "—"}</p>
+              </Field>
+              <Field label="Billing cycle">
+                <p className="text-right font-semibold">{cycle ? billingCycleLabel(cycle) : "Custom"}</p>
+              </Field>
+              <Field label="Plan">
+                <p className="text-right font-semibold">{planLabel(plan)}</p>
+              </Field>
+              <Field label="Number of seats billed">
+                <p className="text-right font-semibold">{seatCount}</p>
+              </Field>
+              <Field label="Rate per seat per month">
+                <p className="text-right font-semibold">{formatINR(rateValue)}</p>
+              </Field>
+              <Field label="Billing period">
+                <p className="text-right font-semibold">
+                  {start && end ? `${formatDate(start)} – ${formatDate(end)}` : "—"}
+                </p>
+              </Field>
+              <Field label="Active modules">
+                <p className="text-right font-semibold">
+                  {modules.length ? modules.map((key) => moduleByKey(key)?.name ?? key).join(", ") : "—"}
+                </p>
+              </Field>
+              <Field label="Description">
+                <p className="text-right font-semibold">{notes.trim() || "—"}</p>
+              </Field>
+              <Field label="Subtotal before GST">
+                <p className="text-right font-semibold">{formatINR(grossAmount)}</p>
+              </Field>
+              <div className="py-2">
+                <InvoiceDiscountFields
+                  mode={discountMode}
+                  value={discountValue}
+                  reason={discountReason}
+                  onModeChange={setDiscountMode}
+                  onValueChange={setDiscountValue}
+                  onReasonChange={setDiscountReason}
+                />
+              </div>
+              <Field label="Discount">
+                <p className="text-right font-semibold">{totals.discountOff > 0 ? `−${formatINR(totals.discountOff)}` : "—"}</p>
+              </Field>
+              <Field label="Taxable amount">
+                <p className="text-right font-semibold">{formatINR(totals.taxable)}</p>
+              </Field>
+              <Field label={`CGST (${cgstRate}%) on taxable amount`}>
+                <p className="text-right font-semibold">{formatINR(totals.cgst)}</p>
+              </Field>
+              <Field label={`SGST (${sgstRate}%) on taxable amount`}>
+                <p className="text-right font-semibold">{formatINR(totals.sgst)}</p>
+              </Field>
+              <div className="flex items-center justify-between border-t border-(--yoco-border-subtle) py-2 font-bold">
+                <span>Total</span>
+                <span>{formatINR(totals.total)}</span>
+              </div>
+            </>
+          ) : (
+            <>
           <Field label="Due date">
             <input type="date" className="yoco-input w-full px-3 py-2 text-right" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-          </Field>
-          <Field label="Status">
-            <YocoSelect
-              fullWidth
-              ariaLabel="Status"
-              value={status}
-              onChange={(v) => setStatus(v as "paid" | "unpaid")}
-              options={[
-                { value: "unpaid", label: "Unpaid" },
-                { value: "paid", label: "Paid" },
-              ]}
-            />
           </Field>
           <Field label="Billing cycle">
             <YocoSelect
@@ -285,49 +353,24 @@ export default function ManualInvoiceModal({
               onReasonChange={setDiscountReason}
             />
           </div>
-          {totals.discountOff > 0 ? (
-            <>
-              <Field label="Taxable amount">
-                <p className="text-right font-semibold">{formatINR(totals.taxable)}</p>
-              </Field>
-            </>
-          ) : null}
-          {sameState ? (
-            <>
-              <Field label={`CGST (${cgstRate}%)`}>
-                <div className="flex items-center justify-end gap-2">
-                  <p className="font-semibold">{formatINR(totals.cgst)}</p>
-                  <button
-                    type="button"
-                    className="text-[11px] font-semibold text-(--yoco-primary)"
-                    onClick={() => setSameState(false)}
-                  >
-                    Use IGST
-                  </button>
-                </div>
-              </Field>
-              <Field label={`SGST (${sgstRate}%)`}>
-                <p className="text-right font-semibold">{formatINR(totals.sgst)}</p>
-              </Field>
-            </>
-          ) : (
-            <Field label={`IGST (${gstRate}%)`}>
-              <div className="flex items-center justify-end gap-2">
-                <p className="font-semibold">{formatINR(totals.igst)}</p>
-                <button
-                  type="button"
-                  className="text-[11px] font-semibold text-(--yoco-primary)"
-                  onClick={() => setSameState(true)}
-                >
-                  Use CGST+SGST
-                </button>
-              </div>
-            </Field>
-          )}
+          <Field label="Discount">
+            <p className="text-right font-semibold">{totals.discountOff > 0 ? `−${formatINR(totals.discountOff)}` : "—"}</p>
+          </Field>
+          <Field label="Taxable amount">
+            <p className="text-right font-semibold">{formatINR(totals.taxable)}</p>
+          </Field>
+          <Field label={`CGST (${cgstRate}%) on taxable amount`}>
+            <p className="text-right font-semibold">{formatINR(totals.cgst)}</p>
+          </Field>
+          <Field label={`SGST (${sgstRate}%) on taxable amount`}>
+            <p className="text-right font-semibold">{formatINR(totals.sgst)}</p>
+          </Field>
           <div className="flex items-center justify-between border-t border-(--yoco-border-subtle) py-2 font-bold">
-            <span>Total amount due</span>
+            <span>Total</span>
             <span>{formatINR(totals.total)}</span>
           </div>
+            </>
+          )}
         </div>
 
         {invalidDiscount ? (
@@ -339,11 +382,11 @@ export default function ManualInvoiceModal({
         <div className="mt-4 flex justify-end gap-2">
           <Button title="Cancel" variant="secondary" onClick={() => setOpen(false)} />
           <Button
-            title="Create invoice"
-            disabled={!canSave}
+            title={editing ? "Save invoice" : "Create invoice"}
+            disabled={!canSave || (editing && invoice?.status !== "unpaid")}
             onClick={() => {
               if (!canSave) return
-              createManualInvoice(hostel.hostelId, {
+              const payload = {
                 notes: notes.trim(),
                 billingPeriodStart: start,
                 billingPeriodEnd: end,
@@ -353,13 +396,18 @@ export default function ManualInvoiceModal({
                 modules,
                 billingCycle: cycle || undefined,
                 grossAmount,
-                sameState,
                 dueDate,
-                status,
+                status: "unpaid" as const,
                 discountType: hasDiscount ? discountMode : undefined,
                 discountValue: hasDiscount ? parsedDiscount : undefined,
                 discountReason: hasDiscount ? discountReason.trim() || undefined : undefined,
-              })
+              }
+              if (invoice) {
+                if (invoice.status !== "unpaid") return
+                updateManualInvoice(hostel.hostelId, invoice.id, payload)
+              } else {
+                createManualInvoice(hostel.hostelId, payload)
+              }
               setOpen(false)
             }}
           />

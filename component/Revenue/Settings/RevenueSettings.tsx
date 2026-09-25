@@ -51,7 +51,6 @@ export default function RevenueSettings() {
   const [invoice, setInvoice] = useState<RevenueSettingsType>(settings)
   const [gstError, setGstError] = useState("")
   const [grace, setGrace] = useState(settings.defaultGraceDays)
-  const [trialDays, setTrialDays] = useState(settings.defaultTrialDays)
   const [modules, setModules] = useState<PlanModuleConfig>({ ...planModules, CUSTOM: [] })
   const [rates, setRates] = useState(planRates)
   const [moduleRates, setModuleRates] = useState(customModuleRates)
@@ -194,7 +193,6 @@ export default function RevenueSettings() {
       sgstRate: Number(invoice.sgstRate) || 0,
       gstRate: (Number(invoice.cgstRate) || 0) + (Number(invoice.sgstRate) || 0),
       defaultGraceDays: Math.max(0, Math.floor(Number(grace) || 0)),
-      defaultTrialDays: Math.max(0, Math.floor(Number(trialDays) || 0)),
       reminderDays: settings.reminderDays,
       whatsappSenderName: settings.whatsappSenderName,
       whatsappSenderPhone: settings.whatsappSenderPhone,
@@ -315,21 +313,6 @@ export default function RevenueSettings() {
                 onChange={(e) => setInvoice({ ...invoice, gstin: e.target.value })}
               />
             </Field>
-            <Field label="Invoice prefix">
-              <input
-                className="yoco-input px-3 py-1.5"
-                value={invoice.invoicePrefix}
-                onChange={(e) => setInvoice({ ...invoice, invoicePrefix: e.target.value })}
-              />
-            </Field>
-            <Field label="Starting sequence">
-              <input
-                type="number"
-                className="yoco-input px-3 py-1.5"
-                value={invoice.invoiceSequence}
-                onChange={(e) => setInvoice({ ...invoice, invoiceSequence: Number(e.target.value) })}
-              />
-            </Field>
             <Field label="CGST %">
               <input
                 type="number"
@@ -381,15 +364,6 @@ export default function RevenueSettings() {
                 className="yoco-input px-3 py-1.5"
                 value={invoice.companyAddress}
                 onChange={(e) => setInvoice({ ...invoice, companyAddress: e.target.value })}
-              />
-            </Field>
-            <Field label="Trial period days">
-              <input
-                type="number"
-                min={0}
-                className="yoco-input px-3 py-1.5"
-                value={trialDays}
-                onChange={(e) => setTrialDays(Number(e.target.value))}
               />
             </Field>
             <Field label="Grace period days">

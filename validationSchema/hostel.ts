@@ -127,6 +127,19 @@ export const hostelSchema = yup.object({
     .required("Seat count (Students) is required."),
   subscriptionModules: yup.array().of(yup.string().required()).default([]),
   subscriptionTrial: yup.boolean().default(true),
+  subscriptionTrialDays: yup
+    .number()
+    .transform((value, original) => (original === "" || original == null || Number.isNaN(value) ? undefined : value))
+    .when("subscriptionTrial", {
+      is: true,
+      then: (schema) =>
+        schema
+          .typeError("Trial days are required.")
+          .integer("Trial days must be a whole number.")
+          .min(1, "Trial days must be at least 1.")
+          .required("Trial days are required."),
+      otherwise: (schema) => schema.optional().nullable(),
+    }),
   subscriptionBillingCycle: yup
     .mixed<"QUARTERLY" | "SEMIANNUAL" | "ANNUAL">()
     .oneOf(["QUARTERLY", "SEMIANNUAL", "ANNUAL"])

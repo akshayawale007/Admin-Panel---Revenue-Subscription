@@ -67,6 +67,8 @@ export type PendingRequest = {
   subscriptionStartDate?: string
   renewalDate?: string
   startTrial?: boolean
+  trialDays?: number
+  requestNo: string
   adminHistory?: AdminActionEvent[]
 }
 
@@ -106,6 +108,8 @@ export type Invoice = {
   discountType?: InvoiceDiscountType
   discountValue?: number
   discountReason?: string
+  upgradeRequestId?: string
+  upgradeRequestNo?: string
 }
 
 export type RevenueViewerRole = "admin" | "warden"
@@ -204,14 +208,11 @@ export type RevenueSettings = {
   companyName: string
   gstin: string
   companyAddress: string
-  invoicePrefix: string
-  invoiceSequence: number
   gstRate: number
   cgstRate: number
   sgstRate: number
   logoDataUrl?: string
   defaultGraceDays: number
-  defaultTrialDays: number
   reminderDays: number[]
   whatsappSenderName: string
   whatsappSenderPhone: string

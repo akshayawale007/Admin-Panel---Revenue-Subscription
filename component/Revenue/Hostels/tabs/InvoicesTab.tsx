@@ -11,7 +11,6 @@ import ComingSoonDialog from "@/component/Revenue/Shared/ComingSoonDialog"
 import TableActionMenu from "@/component/Revenue/Shared/TableActionMenu"
 import InvoicePreviewModal from "@/component/Revenue/Shared/InvoicePreviewModal"
 import ManualInvoiceModal from "@/component/Revenue/Shared/ManualInvoiceModal"
-import InvoiceDiscountModal from "@/component/Revenue/Shared/InvoiceDiscountModal"
 import StatusBadge from "@/component/Revenue/Shared/StatusBadge"
 import { useRevenue } from "@/component/Revenue/RevenueProvider"
 import { INVOICE_ACTOR } from "@/lib/revenue/constants"
@@ -20,9 +19,7 @@ import {
   formatDate,
   formatINR,
   invoicePeriodCycleLabel,
-  invoiceTotalsFromGross,
 } from "@/lib/revenue/utils"
-import { toast } from "react-toastify"
 import type { HostelSubscription, Invoice, RevenueViewerRole } from "@/lib/revenue/types"
 
 export default function InvoicesTab({
@@ -34,6 +31,7 @@ export default function InvoicesTab({
 }) {
   const { updateHostel, addAudit, settings } = useRevenue()
   const [preview, setPreview] = useState<Invoice | null>(null)
+  const [autoPrint, setAutoPrint] = useState(false)
   const [voidTarget, setVoidTarget] = useState<Invoice | null>(null)
   const [paidTarget, setPaidTarget] = useState<Invoice | null>(null)
   const [unpaidTarget, setUnpaidTarget] = useState<Invoice | null>(null)
@@ -41,7 +39,7 @@ export default function InvoicesTab({
   const [dueDateValue, setDueDateValue] = useState("")
   const [notifyOpen, setNotifyOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
-  const [discountTarget, setDiscountTarget] = useState<Invoice | null>(null)
+  const [editTarget, setEditTarget] = useState<Invoice | null>(null)
   const isWarden = viewerRole === "warden"
 
   const rows = hostel.invoices.map((i) => ({ ...i, _id: i.id }))
@@ -75,21 +73,32 @@ export default function InvoicesTab({
 
   const columns = useMemo<ColumnDef<Invoice & { _id: string }>[]>(
     () => [
-      { accessorKey: "invoiceNo", header: "Invoice No.", size: 96 },
+      {
+        header: "Up. Req. Id",
+        size: 100,
+        meta: { align: "center" },
+        cell: ({ row }) => {
+          const invoice = row.original
+          return invoice.invoiceType === "manual" || !invoice.upgradeRequestNo ? "—" : invoice.upgradeRequestNo
+        },
+      },
+      { accessorKey: "invoiceNo", header: "Invoice No.", size: 150, meta: { align: "center" } },
       {
         header: "Billing Cycle",
-        size: 112,
+        size: 108,
+        meta: { align: "center" },
         cell: ({ row }) => (
-          <span className="block whitespace-normal text-xs leading-snug">
+          <span className="block whitespace-normal text-center text-xs leading-snug">
             {invoicePeriodCycleLabel(row.original.billingPeriodStart, row.original.billingPeriodEnd)}
           </span>
         ),
       },
       {
         header: "Billing Period",
-        size: 118,
+        size: 128,
+        meta: { align: "center" },
         cell: ({ row }) => (
-          <div className="flex flex-col gap-0.5 text-xs leading-tight">
+          <div className="flex flex-col items-center gap-0.5 text-center text-xs leading-tight">
             <p>
               <span className="mr-1 text-(--yoco-text-muted)">Start</span>
               {formatDate(row.original.billingPeriodStart)}
@@ -103,7 +112,8 @@ export default function InvoicesTab({
       },
       {
         header: "Seats",
-        size: 64,
+        size: 92,
+        meta: { align: "center" },
         cell: ({ row }) => {
           const invoice = row.original
           if (invoice.invoiceType === "mid_cycle_student_upgrade") {
@@ -115,28 +125,47 @@ export default function InvoicesTab({
           return invoice.students
         },
       },
-      { header: "Total", size: 80, cell: ({ row }) => formatINR(row.original.total) },
-      { header: "Status", size: 76, cell: ({ row }) => <StatusBadge status={row.original.status} /> },
-      { header: "Generated On", size: 96, cell: ({ row }) => formatDate(row.original.dateGenerated) },
+      { header: "Total", size: 92, meta: { align: "center" }, cell: ({ row }) => formatINR(row.original.total) },
+      { header: "Status", size: 88, meta: { align: "center" }, cell: ({ row }) => <StatusBadge status={row.original.status} /> },
+      { header: "Generated On", size: 104, meta: { align: "center" }, cell: ({ row }) => formatDate(row.original.dateGenerated) },
       {
         id: "actions",
         header: "Actions",
-        size: 148,
-        minSize: 140,
+        size: 112,
+        minSize: 112,
         meta: { align: "center" },
         cell: ({ row }) => {
           const invoice = row.original
           return (
-            <div className="flex flex-nowrap items-center justify-center gap-2">
+            <div className="flex flex-nowrap items-center justify-center gap-1">
               <TableActionMenu
                 actions={
                   isWarden
-                    ? [{ label: "Download PDF", onClick: () => toast.success("PDF downloaded", { autoClose: 3000 }) }]
+                    ? [
+                        {
+                          label: "Download PDF",
+                          onClick: () => {
+                            setAutoPrint(true)
+                            setPreview(invoice)
+                          },
+                        },
+                      ]
                     : [
-                        { label: "Download PDF", onClick: () => toast.success("PDF downloaded", { autoClose: 3000 }) },
+                        {
+                          label: "Download PDF",
+                          onClick: () => {
+                            setAutoPrint(true)
+                            setPreview(invoice)
+                          },
+                        },
+                        {
+                          label: "Add discount",
+                          disabled: invoice.status !== "unpaid",
+                          onClick: () => setEditTarget(invoice),
+                        },
                         {
                           label: "Set due date",
-                          disabled: invoice.status === "voided",
+                          disabled: invoice.status !== "unpaid",
                           onClick: () => setDueTarget(invoice),
                         },
                         {
@@ -149,11 +178,6 @@ export default function InvoicesTab({
                           disabled: invoice.status === "unpaid",
                           onClick: () => setUnpaidTarget(invoice),
                         },
-                        {
-                          label: invoice.discountType ? "Edit discount" : "Add discount",
-                          disabled: invoice.status !== "unpaid",
-                          onClick: () => setDiscountTarget(invoice),
-                        },
                         { label: "Void", danger: true, onClick: () => setVoidTarget(invoice) },
                         { label: "Notify", onClick: () => setNotifyOpen(true) },
                       ]
@@ -163,7 +187,10 @@ export default function InvoicesTab({
                 type="button"
                 aria-label="View invoice"
                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-(--yoco-input-border) bg-(--yoco-input-bg) text-(--yoco-text) shadow-sm hover:border-(--yoco-primary)"
-                onClick={() => setPreview(invoice)}
+                onClick={() => {
+                  setAutoPrint(false)
+                  setPreview(invoice)
+                }}
               >
                 <EyeIcon className="size-4" />
               </button>
@@ -183,78 +210,10 @@ export default function InvoicesTab({
         showExport={false}
         data={rows}
         extraColumn={columns}
-        overflowX
+        compact
+        overflowX={false}
         paginationShow
         tableHeight="min(520px, calc(100vh - 280px))"
-        renderSubRow={(invoice) => {
-          const half = Math.round(invoice.gst / 2)
-          const gstSplit = invoice.sameState
-            ? `CGST ${formatINR(half)} · SGST ${formatINR(invoice.gst - half)}`
-            : `IGST ${formatINR(invoice.gst)}`
-          const breakdown = invoice.invoiceBreakdown
-          const discountTotals =
-            invoice.discountType && invoice.discountValue
-              ? invoiceTotalsFromGross({
-                  gross: invoice.grossAmount ?? invoice.amount,
-                  discountType: invoice.discountType,
-                  discountValue: invoice.discountValue,
-                  sameState: invoice.sameState,
-                })
-              : null
-          return (
-            <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-(--yoco-text-muted)">
-              {invoice.invoiceType === "mid_cycle_student_upgrade" && breakdown ? (
-                <>
-                  <span>
-                    <span className="font-semibold text-(--yoco-text)">Original</span> {breakdown.originalStudentCount}
-                  </span>
-                  <span>
-                    <span className="font-semibold text-(--yoco-text)">Added</span> {breakdown.addedStudentCount}
-                  </span>
-                  <span>
-                    <span className="font-semibold text-(--yoco-text)">Charge</span> {formatINR(breakdown.charge ?? invoice.amount)}
-                  </span>
-                </>
-              ) : null}
-              {invoice.invoiceType === "mid_cycle_plan_upgrade" && breakdown ? (
-                <>
-                  <span>
-                    <span className="font-semibold text-(--yoco-text)">Difference</span>{" "}
-                    {formatINR((breakdown.newRate ?? 0) - (breakdown.previousRate ?? 0))}/seat
-                  </span>
-                  <span>
-                    <span className="font-semibold text-(--yoco-text)">Applies to</span> {breakdown.billedStudentCount}
-                  </span>
-                  <span>
-                    <span className="font-semibold text-(--yoco-text)">Charge</span> {formatINR(breakdown.charge ?? invoice.amount)}
-                  </span>
-                </>
-              ) : null}
-              <span>
-                <span className="font-semibold text-(--yoco-text)">Amount</span> {formatINR(invoice.amount)}
-              </span>
-              {discountTotals ? (
-                <span>
-                  <span className="font-semibold text-(--yoco-text)">Discount</span> −
-                  {formatINR(discountTotals.discountOff)}
-                  {invoice.discountType === "percent" ? ` (${invoice.discountValue}%)` : ""}
-                </span>
-              ) : null}
-              {invoice.invoiceType === "manual" && invoice.notes ? (
-                <span>
-                  <span className="font-semibold text-(--yoco-text)">Note</span> {invoice.notes}
-                </span>
-              ) : null}
-              <span>
-                <span className="font-semibold text-(--yoco-text)">GST</span> {formatINR(invoice.gst)}{" "}
-                <span>({gstSplit})</span>
-              </span>
-              <span>
-                <span className="font-semibold text-(--yoco-text)">Total</span> {formatINR(invoice.total)}
-              </span>
-            </div>
-          )
-        }}
       />
       {!isWarden ? (
         <button
@@ -266,19 +225,25 @@ export default function InvoicesTab({
         </button>
       ) : null}
       <ManualInvoiceModal open={createOpen} setOpen={setCreateOpen} hostel={hostel} />
-      <InvoiceDiscountModal
-        open={Boolean(discountTarget)}
-        setOpen={(open) => !open && setDiscountTarget(null)}
+      <ManualInvoiceModal
+        open={Boolean(editTarget)}
+        setOpen={(open) => {
+          if (!open) setEditTarget(null)
+        }}
         hostel={hostel}
-        invoice={discountTarget}
+        invoice={editTarget}
       />
       <InvoicePreviewModal
         open={Boolean(preview)}
-        setOpen={() => setPreview(null)}
+        setOpen={() => {
+          setPreview(null)
+          setAutoPrint(false)
+        }}
         invoice={preview}
         hostel={hostel}
         settings={settings}
         viewerRole={viewerRole}
+        autoPrint={autoPrint}
       />
       <ComingSoonDialog open={notifyOpen} setOpen={setNotifyOpen} />
       <Modal open={Boolean(dueTarget)} setOpen={(open) => !open && setDueTarget(null)} width="md">

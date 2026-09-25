@@ -28,27 +28,35 @@ export default function ComparePlansModal({
   onChoosePlan,
 }: ComparePlansModalProps) {
   return (
-    <Modal open={open} setOpen={setOpen} width="5xl" height="90vh">
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <Modal
+      open={open}
+      setOpen={setOpen}
+      width="5xl"
+      height="fit"
+      contentClassName="px-4 py-4"
+    >
+      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
           <p className="text-lg font-semibold">Compare plans</p>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="cursor-pointer rounded-lg px-3 py-1.5 text-sm font-semibold text-(--yoco-text-muted) hover:bg-(--yoco-surface-muted)"
+            className="cursor-pointer rounded-lg px-2.5 py-1 text-sm font-semibold text-(--yoco-text-muted) hover:bg-(--yoco-surface-muted)"
           >
             Close
           </button>
         </div>
-        <ComparePlansView
-          currentPlan={currentPlan}
-          planModules={planModules}
-          canChoose={canChoose}
-          canChooseCustom={canChooseCustom}
-          allowRenewCurrent={allowRenewCurrent}
-          allowDowngrade={allowDowngrade}
-          onChoosePlan={onChoosePlan}
-        />
+        <div className="min-h-0 flex-auto overflow-y-auto">
+          <ComparePlansView
+            currentPlan={currentPlan}
+            planModules={planModules}
+            canChoose={canChoose}
+            canChooseCustom={canChooseCustom}
+            allowRenewCurrent={allowRenewCurrent}
+            allowDowngrade={allowDowngrade}
+            onChoosePlan={onChoosePlan}
+          />
+        </div>
       </div>
     </Modal>
   )

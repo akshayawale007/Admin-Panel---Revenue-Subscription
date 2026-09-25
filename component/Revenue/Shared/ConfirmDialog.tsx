@@ -16,6 +16,8 @@ type ConfirmDialogProps = {
   noteRequired?: boolean
   noteLabel?: string
   onConfirm: (note?: string) => void
+  secondaryConfirmLabel?: string
+  onSecondaryConfirm?: (note?: string) => void
 }
 
 export default function ConfirmDialog({
@@ -30,6 +32,8 @@ export default function ConfirmDialog({
   noteRequired,
   noteLabel = "Note",
   onConfirm,
+  secondaryConfirmLabel,
+  onSecondaryConfirm,
 }: ConfirmDialogProps) {
   const [note, setNote] = useState("")
 
@@ -60,8 +64,20 @@ export default function ConfirmDialog({
             />
           </label>
         ) : null}
-        <div className="mt-6 flex justify-end gap-2">
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
           <Button title={cancelLabel} variant="secondary" onClick={() => setOpen(false)} />
+          {secondaryConfirmLabel && onSecondaryConfirm ? (
+            <Button
+              title={secondaryConfirmLabel}
+              variant="secondary"
+              disabled={!canConfirm}
+              onClick={() => {
+                if (!canConfirm) return
+                onSecondaryConfirm(note.trim() || undefined)
+                setOpen(false)
+              }}
+            />
+          ) : null}
           <Button
             title={confirmLabel}
             variant={danger ? "danger" : "primary"}

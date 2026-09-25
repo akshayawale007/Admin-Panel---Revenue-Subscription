@@ -14,7 +14,6 @@ import { useRevenue } from "@/component/Revenue/RevenueProvider"
 import { billedRateFor, daysUntil, defaultInvoiceDueDate, effectiveSubscriptionStatus, formatDate, formatDateTime, gstBreakdown, subscriptionAccessEndDate } from "@/lib/revenue/utils"
 import type { HostelSubscription, Invoice } from "@/lib/revenue/types"
 import dayjs from "dayjs"
-import { toast } from "react-toastify"
 
 type Row = HostelSubscription & { daysLeft: number }
 
@@ -25,7 +24,7 @@ function daysClass(days: number) {
 }
 
 export default function RenewalAlerts() {
-  const { hostels, updateHostel, addAudit, settings, nextInvoiceNo, planRates, customModuleRates, planModules } = useRevenue()
+  const { hostels, updateHostel, settings, createLinkedInvoice, planRates, customModuleRates, planModules } = useRevenue()
   const graceDays = settings.defaultGraceDays
   const router = useRouter()
   const [notifyOpen, setNotifyOpen] = useState(false)
@@ -112,8 +111,9 @@ export default function RenewalAlerts() {
                   const amount = row.original.studentCount * rate * 12
                   const gst = gstBreakdown(amount, true, settings.gstRate, settings)
                   const inv: Invoice = {
-                    id: `inv-${Date.now()}`,
-                    invoiceNo: nextInvoiceNo(),
+                    id: "preview",
+                    invoiceNo: "Assigned on save",
+                    upgradeRequestNo: "Assigned on save",
                     billingPeriodStart: row.original.renewalDate,
                     billingPeriodEnd: dayjs(row.original.renewalDate).add(1, "year").format("YYYY-MM-DD"),
                     students: row.original.studentCount,
@@ -140,7 +140,7 @@ export default function RenewalAlerts() {
         ),
       },
     ],
-    [addAudit, nextInvoiceNo, router, settings.gstRate, updateHostel]
+    [createLinkedInvoice, router, settings.gstRate, updateHostel]
   )
 
   return (
@@ -169,9 +169,17 @@ export default function RenewalAlerts() {
         settings={settings}
         onConfirmSend={() => {
           if (!draft || !invoiceHostel) return
-          updateHostel(invoiceHostel.hostelId, { invoices: [draft, ...invoiceHostel.invoices] })
-          addAudit(invoiceHostel.hostelId, `Invoice ${draft.invoiceNo} generated`)
-          toast.success("Invoice sent", { autoClose: 3000 })
+          const { id: _id, invoiceNo: _invoiceNo, upgradeRequestId: _requestId, upgradeRequestNo: _requestNo, sameState: _sameState, ...rest } = draft
+          createLinkedInvoice(invoiceHostel.hostelId, rest, {
+            type: "renewal_after_expiry",
+            planRequested: draft.plan,
+            studentCount: draft.students,
+            modules: draft.modules,
+            billingCycle: draft.billingCycle,
+            subscriptionStartDate: draft.billingPeriodStart,
+            renewalDate: draft.billingPeriodEnd,
+            details: "Renewal invoice",
+          })
           setDraft(null)
         }}
       />

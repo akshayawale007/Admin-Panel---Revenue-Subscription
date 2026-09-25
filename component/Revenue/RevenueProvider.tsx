@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -46,8 +47,13 @@ import {
   matchBillingCycle,
   periodMonthsFromDates,
   defaultInvoiceDueDate,
+  financialYearLabel,
+  formatInvoiceSerial,
+  formatRequestNo,
   invoiceGrossAmount,
+  invoiceSerialInYear,
   invoiceTotalsFromGross,
+  requestSerial,
   subscriptionAccessEndDate,
 } from "@/lib/revenue/utils"
 import { remainingFraction } from "@/lib/revenue/subscriptionBilling"
@@ -60,6 +66,7 @@ export type SubscriptionUpsertInput = {
   startDate: string
   renewalDate: string
   trial: boolean
+  trialDays?: number
   billingCycle?: BillingCycle
 }
 
@@ -73,7 +80,6 @@ export type ManualInvoiceInput = {
   modules: string[]
   billingCycle?: BillingCycle
   grossAmount: number
-  sameState: boolean
   dueDate: string
   status?: "paid" | "unpaid"
   discountType?: InvoiceDiscountType
@@ -96,7 +102,12 @@ type RevenueContextValue = {
   getHostel: (id: string) => HostelSubscription | undefined
   updateHostel: (id: string, patch: Partial<HostelSubscription> | ((h: HostelSubscription) => HostelSubscription)) => void
   addAudit: (id: string, description: string, adminName?: string) => void
-  approveRequest: (hostelId: string, requestId: string, note?: string) => void
+  approveRequest: (
+    hostelId: string,
+    requestId: string,
+    note?: string,
+    options?: { createInvoice?: boolean }
+  ) => void
   rejectRequest: (hostelId: string, requestId: string, reason: string) => void
   holdRequest: (hostelId: string, requestId: string) => void
   addPendingRequest: (
@@ -114,6 +125,7 @@ type RevenueContextValue = {
           | "startTrial"
           | "subscriptionStartDate"
           | "renewalDate"
+          | "trialDays"
         >
       >
   ) => void
@@ -125,6 +137,18 @@ type RevenueContextValue = {
   updateSubscription: (hostelId: string, input: SubscriptionChangeInput) => void
   nextInvoiceNo: () => string
   createManualInvoice: (hostelId: string, input: ManualInvoiceInput) => void
+  updateManualInvoice: (hostelId: string, invoiceId: string, input: ManualInvoiceInput) => void
+  createLinkedInvoice: (
+    hostelId: string,
+    draft: Omit<Invoice, "id" | "invoiceNo" | "upgradeRequestId" | "upgradeRequestNo" | "sameState">,
+    request: Pick<PendingRequest, "type"> &
+      Partial<
+        Pick<
+          PendingRequest,
+          "planRequested" | "studentCount" | "modules" | "billingCycle" | "subscriptionStartDate" | "renewalDate" | "details"
+        >
+      >
+  ) => void
   applyInvoiceDiscount: (hostelId: string, invoiceId: string, discount: InvoiceDiscountInput) => void
 }
 
@@ -140,7 +164,8 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
   const [planModules, setPlanModules] = useState<PlanModuleConfig>(DEFAULT_PLAN_MODULES)
   const [planRates, setPlanRates] = useState<PlanRates>(DEFAULT_PLAN_RATES)
   const [customModuleRates, setCustomModuleRates] = useState<CustomModuleRates>(DEFAULT_CUSTOM_MODULE_RATES)
-  const [invoiceSeq, setInvoiceSeq] = useState(DEFAULT_SETTINGS.invoiceSequence)
+  const invoiceCursor = useRef<{ fy: string; next: number } | null>(null)
+  const requestCursor = useRef(0)
 
   const pricing = useMemo(
     () => ({ planRates, customModuleRates, planModules }),
@@ -197,16 +222,40 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
+  const ensureCursors = useCallback(() => {
+    const fy = financialYearLabel()
+    let maxInv = 0
+    let maxReq = 0
+    for (const hostel of hostels) {
+      for (const invoice of hostel.invoices) maxInv = Math.max(maxInv, invoiceSerialInYear(invoice.invoiceNo, fy))
+      for (const request of hostel.pendingRequests) maxReq = Math.max(maxReq, requestSerial(request.requestNo))
+    }
+    if (!invoiceCursor.current || invoiceCursor.current.fy !== fy) {
+      invoiceCursor.current = { fy, next: maxInv + 1 }
+    } else if (invoiceCursor.current.next < maxInv + 1) {
+      invoiceCursor.current.next = maxInv + 1
+    }
+    if (requestCursor.current < maxReq) requestCursor.current = maxReq
+  }, [hostels])
+
   const takeInvoiceNos = useCallback(
     (count: number) => {
+      ensureCursors()
       if (count <= 0) return [] as string[]
-      const start = invoiceSeq
-      setInvoiceSeq((s) => s + count)
-      setSettings((s) => ({ ...s, invoiceSequence: s.invoiceSequence + count }))
-      return Array.from({ length: count }, (_, i) => `${settings.invoicePrefix}${start + i}`)
+      const cursor = invoiceCursor.current
+      if (!cursor) return []
+      const start = cursor.next
+      cursor.next += count
+      return Array.from({ length: count }, (_, i) => formatInvoiceSerial(start + i))
     },
-    [invoiceSeq, settings.invoicePrefix]
+    [ensureCursors]
   )
+
+  const takeRequestNo = useCallback(() => {
+    ensureCursors()
+    requestCursor.current += 1
+    return formatRequestNo(requestCursor.current)
+  }, [ensureCursors])
 
   const nextInvoiceNo = useCallback(() => takeInvoiceNos(1)[0], [takeInvoiceNos])
 
@@ -219,7 +268,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         gross: input.grossAmount,
         discountType: hasDiscount ? input.discountType : undefined,
         discountValue: hasDiscount ? input.discountValue : undefined,
-        sameState: input.sameState,
+        sameState: true,
         gstRate: settings.gstRate,
         cgstRate: settings.cgstRate,
         sgstRate: settings.sgstRate,
@@ -239,9 +288,9 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         amount: totals.taxable,
         gst: totals.gst,
         total: totals.total,
-        status: input.status === "paid" ? "paid" : "unpaid",
+        status: "unpaid",
         dateGenerated: generatedOn,
-        sameState: input.sameState,
+        sameState: true,
         dueDate: input.dueDate || defaultInvoiceDueDate(generatedOn),
         modules: input.modules,
         plan: input.plan,
@@ -270,6 +319,60 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
     [addAudit, hostels, nextInvoiceNo, settings.cgstRate, settings.gstRate, settings.sgstRate, updateHostel]
   )
 
+  const updateManualInvoice = useCallback(
+    (hostelId: string, invoiceId: string, input: ManualInvoiceInput) => {
+      const hostel = hostels.find((h) => h.hostelId === hostelId || h._id === hostelId)
+      const current = hostel?.invoices.find((invoice) => invoice.id === invoiceId)
+      if (!hostel || !current || current.status !== "unpaid") {
+        toast.error("Only unpaid invoices can be edited", toastOpts)
+        return
+      }
+      const gross = invoiceGrossAmount(current)
+      const hasDiscount = Boolean(input.discountType && input.discountValue && input.discountValue > 0)
+      const totals = invoiceTotalsFromGross({
+        gross,
+        discountType: hasDiscount ? input.discountType : undefined,
+        discountValue: hasDiscount ? input.discountValue : undefined,
+        sameState: true,
+        gstRate: settings.gstRate,
+        cgstRate: settings.cgstRate,
+        sgstRate: settings.sgstRate,
+        proRatedAdjustment: current.proRatedAdjustment,
+      })
+      const reason = hasDiscount ? input.discountReason?.trim() || undefined : undefined
+      const historyEvent = {
+        id: uid("ih"),
+        action: hasDiscount ? "discount updated" : "discount cleared",
+        note: hasDiscount
+          ? `${input.discountType === "percent" ? `${input.discountValue}%` : `₹${input.discountValue}`}${reason ? ` — ${reason}` : ""}`
+          : undefined,
+        timestamp: new Date().toISOString(),
+        by: INVOICE_ACTOR,
+      }
+      updateHostel(hostelId, (h) => ({
+        ...h,
+        invoices: h.invoices.map((invoice) =>
+          invoice.id === invoiceId
+            ? {
+                ...invoice,
+                amount: totals.taxable,
+                gst: totals.gst,
+                total: totals.total,
+                grossAmount: hasDiscount ? totals.gross : undefined,
+                discountType: hasDiscount ? input.discountType : undefined,
+                discountValue: hasDiscount ? input.discountValue : undefined,
+                discountReason: reason,
+                invoiceHistory: [historyEvent, ...(invoice.invoiceHistory ?? [])],
+              }
+            : invoice
+        ),
+      }))
+      addAudit(hostelId, `Invoice ${current.invoiceNo} edited`, INVOICE_ACTOR)
+      toast.success("Invoice updated", toastOpts)
+    },
+    [addAudit, hostels, settings.cgstRate, settings.gstRate, settings.sgstRate, updateHostel]
+  )
+
   const applyInvoiceDiscount = useCallback(
     (hostelId: string, invoiceId: string, discount: InvoiceDiscountInput) => {
       const hostel = hostels.find((h) => h.hostelId === hostelId || h._id === hostelId)
@@ -282,7 +385,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         gross,
         discountType: cleared ? undefined : discount.type,
         discountValue: cleared ? undefined : discount.value,
-        sameState: current.sameState,
+        sameState: true,
         gstRate: settings.gstRate,
         cgstRate: settings.cgstRate,
         sgstRate: settings.sgstRate,
@@ -310,6 +413,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
                 discountType: cleared ? undefined : discount.type,
                 discountValue: cleared ? undefined : discount.value,
                 discountReason: reason,
+                sameState: true,
                 amount: totals.taxable,
                 gst: totals.gst,
                 total: totals.total,
@@ -329,7 +433,11 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
   )
 
   const materializeChange = useCallback(
-    (h: HostelSubscription, input: SubscriptionChangeInput): HostelSubscription => {
+    (
+      h: HostelSubscription,
+      input: SubscriptionChangeInput,
+      options?: { createInvoice?: boolean; upgradeRequestId?: string; upgradeRequestNo?: string }
+    ): HostelSubscription => {
       const result = computeMidCycleChange(h, input, settings.gstRate, {
         pricing,
         isTrial: h.status === "trial",
@@ -338,12 +446,18 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         cgstRate: settings.cgstRate,
         sgstRate: settings.sgstRate,
       })
-      const nos = takeInvoiceNos(result.invoices.length)
-      const invoices: Invoice[] = result.invoices.map((draft, i) => ({
-        ...draft,
-        id: uid("inv"),
-        invoiceNo: nos[i],
-      }))
+      const shouldInvoice = options?.createInvoice !== false
+      const nos = shouldInvoice ? takeInvoiceNos(result.invoices.length) : []
+      const invoices: Invoice[] = shouldInvoice
+        ? result.invoices.map((draft, i) => ({
+            ...draft,
+            id: uid("inv"),
+            invoiceNo: nos[i],
+            sameState: true,
+            upgradeRequestId: options?.upgradeRequestId,
+            upgradeRequestNo: options?.upgradeRequestNo,
+          }))
+        : []
       const audits: AuditEvent[] = result.descriptions.map((description) => ({
         id: uid("aud"),
         description,
@@ -379,7 +493,8 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
   )
 
   const approveRequest = useCallback(
-    (hostelId: string, requestId: string, note?: string) => {
+    (hostelId: string, requestId: string, note?: string, options?: { createInvoice?: boolean }) => {
+      const createInvoice = options?.createInvoice === true
       const found = hostels.find((h) => h.hostelId === hostelId || h._id === hostelId)
       if (!found) return
       const current = applyDueUpcomingChange(found)
@@ -483,10 +598,15 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
           modules,
           plan,
           rate,
-          invoiceType: "annual_subscription",
+          invoiceType: "annual_subscription" as const,
           billingCycle: cycle,
+          upgradeRequestId: request.id,
+          upgradeRequestNo: request.requestNo,
         }
       }
+
+      const billedInvoices = (invoice: Invoice | null) =>
+        createInvoice && invoice ? [invoice, ...next.invoices] : next.invoices
 
       let next: HostelSubscription = {
         ...current,
@@ -496,8 +616,11 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
 
       if (request.startTrial) {
         const start = dayjs().format("YYYY-MM-DD")
-        const renewalDate = dayjs(start).add(Math.max(0, settings.defaultTrialDays), "day").format("YYYY-MM-DD")
-        const invoice = buildInvoice(start, renewalDate, requestedPlan, requestedModules, studentCount, true)
+        const trialDays = Math.max(1, request.trialDays || 30)
+        const renewalDate = dayjs(start).add(trialDays, "day").format("YYYY-MM-DD")
+        const invoice = createInvoice
+          ? buildInvoice(start, renewalDate, requestedPlan, requestedModules, studentCount, true)
+          : null
         next = {
           ...next,
           plan: requestedPlan,
@@ -511,18 +634,22 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
           modulesLocked: false,
           trialLapsed: false,
           contractRate: 0,
-          invoices: [invoice, ...next.invoices],
+          invoices: billedInvoices(invoice),
         }
       } else if (request.type === "student_count_update") {
         const delta = studentCount - current.studentCount
         if (delta < 0 && (inPeriod || current.status === "trial" || isInGracePeriod(current, graceDays))) {
           next.pendingRequests = markApproved()
         } else if (delta > 0 && inPeriod) {
-          next = materializeChange(next, {
-            plan: current.plan,
-            addStudents: delta,
-            modules: current.activeModules,
-          })
+          next = materializeChange(
+            next,
+            {
+              plan: current.plan,
+              addStudents: delta,
+              modules: current.activeModules,
+            },
+            { createInvoice, upgradeRequestId: request.id, upgradeRequestNo: request.requestNo }
+          )
           next.pendingRequests = markApproved()
         } else if (delta !== 0 && inPeriod) {
           next = {
@@ -538,7 +665,9 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         } else if (immediate) {
           const start = dayjs().format("YYYY-MM-DD")
           const renewalDate = billingCycleEndDate(start, cycle)
-          const invoice = buildInvoice(start, renewalDate, requestedPlan, requestedModules, studentCount, false)
+          const invoice = createInvoice
+            ? buildInvoice(start, renewalDate, requestedPlan, requestedModules, studentCount, false)
+            : null
           next = {
             ...next,
             plan: requestedPlan,
@@ -552,8 +681,8 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
             activeModules: requestedModules,
             modulesLocked: false,
             trialLapsed: false,
-            contractRate: invoice.rate,
-            invoices: [invoice, ...next.invoices],
+            contractRate: invoice?.rate ?? billedRateFor(requestedPlan, requestedModules, pricing),
+            invoices: billedInvoices(invoice),
           }
         }
       } else if (
@@ -562,16 +691,22 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
           ((current.status === "trial" || isInGracePeriod(current, graceDays)) && !newPeriodRequested))
       ) {
         const addStudents = Math.max(0, studentCount - current.studentCount)
-        next = materializeChange(next, {
-          plan: requestedPlan,
-          addStudents,
-          modules: requestedModules,
-        })
+        next = materializeChange(
+          next,
+          {
+            plan: requestedPlan,
+            addStudents,
+            modules: requestedModules,
+          },
+          { createInvoice, upgradeRequestId: request.id, upgradeRequestNo: request.requestNo }
+        )
         next.pendingRequests = markApproved()
       } else if (immediate) {
         const start = request.subscriptionStartDate || dayjs().format("YYYY-MM-DD")
         const renewalDate = request.renewalDate || billingCycleEndDate(start, cycle)
-        const invoice = buildInvoice(start, renewalDate, requestedPlan, requestedModules, studentCount, false)
+        const invoice = createInvoice
+          ? buildInvoice(start, renewalDate, requestedPlan, requestedModules, studentCount, false)
+          : null
         next = {
           ...next,
           plan: requestedPlan,
@@ -585,13 +720,15 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
           activeModules: requestedModules,
           modulesLocked: false,
           trialLapsed: false,
-          contractRate: invoice.rate,
-          invoices: [invoice, ...next.invoices],
+          contractRate: invoice?.rate ?? billedRateFor(requestedPlan, requestedModules, pricing),
+          invoices: billedInvoices(invoice),
         }
       } else {
         const start = current.renewalDate
         const end = billingCycleEndDate(start, cycle)
-        const invoice = buildInvoice(start, end, requestedPlan, requestedModules, studentCount, false)
+        const invoice = createInvoice
+          ? buildInvoice(start, end, requestedPlan, requestedModules, studentCount, false)
+          : null
         const kind: UpcomingKind =
           request.type === "plan_downgrade" ||
           (requestedPlan && current.plan && isLowerTier(requestedPlan, current.plan))
@@ -608,15 +745,15 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
           upcomingBillingCycle: cycle,
           scheduledChangeDate: current.renewalDate,
           upcomingKind: kind,
-          invoices: [invoice, ...next.invoices],
+          invoices: billedInvoices(invoice),
         }
       }
 
       next.annualValue = calcARR(next.studentCount, hostelRate(next), next.status)
       setHostels((prev) => prev.map((h) => (h.hostelId === hostelId || h._id === hostelId ? next : h)))
-      toast.success("Request approved", toastOpts)
+      toast.success(createInvoice ? "Request approved and invoice created" : "Request approved", toastOpts)
     },
-    [hostels, materializeChange, planModules, pricing, settings.defaultGraceDays, settings.defaultTrialDays, settings.gstRate, takeInvoiceNos]
+    [hostels, materializeChange, planModules, pricing, settings.defaultGraceDays, settings.gstRate, takeInvoiceNos]
   )
 
   const rejectRequest = useCallback((hostelId: string, requestId: string, reason: string) => {
@@ -671,6 +808,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
             | "subscriptionStartDate"
             | "renewalDate"
             | "startTrial"
+            | "trialDays"
           >
         >
     ) => {
@@ -678,6 +816,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       if (!current) return
       const request: PendingRequest = {
         id: uid("pr"),
+        requestNo: takeRequestNo(),
         type: input.type,
         requestedBy: current.adminName,
         requestedByDesignation: "Warden",
@@ -692,6 +831,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         subscriptionStartDate: input.subscriptionStartDate,
         renewalDate: input.renewalDate,
         startTrial: input.startTrial,
+        trialDays: input.startTrial ? Math.max(1, input.trialDays || 30) : undefined,
       }
       setHostels((prev) =>
         prev.map((h) =>
@@ -702,7 +842,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       )
       toast.success("Request submitted", toastOpts)
     },
-    [hostels]
+    [hostels, takeRequestNo]
   )
 
   const withdrawPendingRequest = useCallback((hostelId: string, requestId: string) => {
@@ -744,7 +884,6 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
 
   const saveSettings = useCallback((next: RevenueSettings) => {
     setSettings(next)
-    setInvoiceSeq(next.invoiceSequence)
     toast.success("Settings saved", toastOpts)
   }, [])
 
@@ -768,9 +907,28 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       const amount = input.trial
         ? 0
         : calcPeriodValue(input.studentCount, rate, periodMonthsFromDates(input.startDate, renewalDate), "active")
-      const gst = gstBreakdown(amount, true, settings.gstRate, settings)
+      const totals = invoiceTotalsFromGross({
+        gross: amount,
+        sameState: true,
+        gstRate: settings.gstRate,
+        cgstRate: settings.cgstRate,
+        sgstRate: settings.sgstRate,
+      })
       const status: SubscriptionStatus = input.trial ? "trial" : "active"
       const annualValue = calcARR(input.studentCount, rate, status)
+      const exists = hostels.some(
+        (h) =>
+          h.hostelId === input.hostel.hostelId ||
+          h._id === input.hostel.hostelId ||
+          h.hostelCode === input.hostel.hostelCode
+      )
+      const opening = exists
+        ? null
+        : {
+            invoiceNo: takeInvoiceNos(1)[0],
+            requestNo: takeRequestNo(),
+            requestId: uid("pr"),
+          }
 
       setHostels((prev) => {
         const idx = prev.findIndex(
@@ -822,8 +980,26 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
           return copy
         }
 
-        const invoiceNo = `${settings.invoicePrefix}${invoiceSeq}`
-        setInvoiceSeq((s) => s + 1)
+        if (!opening) return prev
+        const dateGenerated = dayjs().format("YYYY-MM-DD")
+        const openingRequest: PendingRequest = {
+          id: opening.requestId,
+          requestNo: opening.requestNo,
+          type: "new_subscription",
+          requestedBy: input.hostel.adminName || ADMIN_NAME,
+          requestedByDesignation: "Warden",
+          submittedOn: dateGenerated,
+          status: "approved",
+          planRequested: input.plan,
+          studentCount: input.studentCount,
+          modules,
+          details: input.trial ? "Created with new hostel (trial)" : "Created with new hostel",
+          billingCycle,
+          subscriptionStartDate: input.startDate,
+          renewalDate,
+          startTrial: input.trial || undefined,
+          trialDays: input.trial ? Math.max(1, input.trialDays || 30) : undefined,
+        }
         const record: HostelSubscription = {
           _id: input.hostel.hostelId,
           hostelId: input.hostel.hostelId,
@@ -844,26 +1020,28 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
           subscriptionStartDate: input.startDate,
           renewalDate,
           activeModules: modules,
-          pendingRequests: [],
+          pendingRequests: [openingRequest],
           invoices: [
             {
               id: uid("inv"),
-              invoiceNo,
+              invoiceNo: opening.invoiceNo,
               billingPeriodStart: input.startDate,
               billingPeriodEnd: renewalDate,
               students: input.studentCount,
-              amount,
-              gst: gst.gst,
-              total: gst.total,
+              amount: totals.taxable,
+              gst: totals.gst,
+              total: totals.total,
               status: input.trial ? "paid" : "unpaid",
-              dateGenerated: dayjs().format("YYYY-MM-DD"),
+              dateGenerated,
               sameState: true,
-              dueDate: defaultInvoiceDueDate(dayjs().format("YYYY-MM-DD")),
+              dueDate: defaultInvoiceDueDate(dateGenerated),
               modules,
               plan: input.plan,
               rate,
               invoiceType: "annual_subscription",
               billingCycle,
+              upgradeRequestId: opening.requestId,
+              upgradeRequestNo: opening.requestNo,
             } satisfies Invoice,
           ],
           paymentProofs: [],
@@ -874,7 +1052,66 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       })
       toast.success("Subscription saved", toastOpts)
     },
-    [invoiceSeq, pricing, settings]
+    [hostels, pricing, settings, takeInvoiceNos, takeRequestNo]
+  )
+
+  const createLinkedInvoice = useCallback(
+    (
+      hostelId: string,
+      draft: Omit<Invoice, "id" | "invoiceNo" | "upgradeRequestId" | "upgradeRequestNo" | "sameState">,
+      requestInput: Pick<PendingRequest, "type"> &
+        Partial<
+          Pick<
+            PendingRequest,
+            | "planRequested"
+            | "studentCount"
+            | "modules"
+            | "billingCycle"
+            | "subscriptionStartDate"
+            | "renewalDate"
+            | "details"
+          >
+        >
+    ) => {
+      const hostel = hostels.find((h) => h.hostelId === hostelId || h._id === hostelId)
+      if (!hostel) return
+      const [invoiceNo] = takeInvoiceNos(1)
+      const requestNo = takeRequestNo()
+      const requestId = uid("pr")
+      const submittedOn = dayjs().format("YYYY-MM-DD")
+      const request: PendingRequest = {
+        id: requestId,
+        requestNo,
+        type: requestInput.type,
+        requestedBy: hostel.adminName,
+        requestedByDesignation: "Warden",
+        submittedOn,
+        status: "approved",
+        planRequested: requestInput.planRequested,
+        studentCount: requestInput.studentCount,
+        modules: requestInput.modules,
+        details: requestInput.details ?? "Invoice issued for this upgrade request",
+        billingCycle: requestInput.billingCycle,
+        subscriptionStartDate: requestInput.subscriptionStartDate,
+        renewalDate: requestInput.renewalDate,
+      }
+      const invoice: Invoice = {
+        ...draft,
+        id: uid("inv"),
+        invoiceNo,
+        sameState: true,
+        upgradeRequestId: requestId,
+        upgradeRequestNo: requestNo,
+      }
+      updateHostel(hostelId, (h) => ({
+        ...h,
+        pendingRequests: [request, ...h.pendingRequests],
+        invoices: [invoice, ...h.invoices],
+      }))
+      addAudit(hostelId, `Invoice ${invoiceNo} created for ${requestNo}`, INVOICE_ACTOR)
+      toast.success("Invoice sent", toastOpts)
+    },
+    [addAudit, hostels, takeInvoiceNos, takeRequestNo, updateHostel]
   )
 
   const value = useMemo<RevenueContextValue>(
@@ -899,6 +1136,8 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       updateSubscription,
       nextInvoiceNo,
       createManualInvoice,
+      updateManualInvoice,
+      createLinkedInvoice,
       applyInvoiceDiscount,
     }),
     [
@@ -922,6 +1161,8 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       updateSubscription,
       nextInvoiceNo,
       createManualInvoice,
+      updateManualInvoice,
+      createLinkedInvoice,
       applyInvoiceDiscount,
     ]
   )

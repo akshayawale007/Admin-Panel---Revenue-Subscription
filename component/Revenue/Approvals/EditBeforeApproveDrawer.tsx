@@ -65,7 +65,7 @@ export default function EditBeforeApproveDrawer({
           : row.hostel.notes,
       })
       addAudit(row.hostel.hostelId, "Edited before approving")
-      approveRequest(row.hostel.hostelId, row.id)
+      approveRequest(row.hostel.hostelId, row.id, undefined, { createInvoice: true })
       onClose()
     }
     if (row.hostel.plan && plan !== row.hostel.plan) {
@@ -122,7 +122,7 @@ export default function EditBeforeApproveDrawer({
                   ? ` · extras: ${breakdown.extras.map((line) => `${line.key} ${formatRate(line.rate)}`).join(", ")}`
                   : ""}
               </p>
-              <Button title="Save & Approve" onClick={save} />
+              <Button title="Save & mark approved" onClick={() => save()} />
             </div>
           ) : null}
         </DrawerItems>
@@ -140,7 +140,7 @@ export default function EditBeforeApproveDrawer({
             renewalDate: renewal,
             activeModules: modules,
           })
-          approveRequest(row.hostel.hostelId, row.id)
+          approveRequest(row.hostel.hostelId, row.id, undefined, { createInvoice: true })
           onClose()
         }}
       />

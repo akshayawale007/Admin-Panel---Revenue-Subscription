@@ -12,7 +12,7 @@ import PlanBadge from "@/component/Revenue/Shared/PlanBadge"
 import StatusBadge from "@/component/Revenue/Shared/StatusBadge"
 import { useRevenue } from "@/component/Revenue/RevenueProvider"
 import EditBeforeApproveDrawer from "./EditBeforeApproveDrawer"
-import { formatDate, requestTypeLabel } from "@/lib/revenue/utils"
+import { formatDate, requestSerial, requestTypeLabel } from "@/lib/revenue/utils"
 import type { HostelSubscription, PendingRequest } from "@/lib/revenue/types"
 import TableActionMenu from "@/component/Revenue/Shared/TableActionMenu"
 import DebounceAsyncSearch from "@/component/Common/Search/Search"
@@ -40,6 +40,7 @@ export default function ApprovalQueue() {
   const [hold, setHold] = useState<Row | null>(null)
   const [proof, setProof] = useState<Row | null>(null)
   const [query, setQuery] = useState("")
+  const [approveTarget, setApproveTarget] = useState<Row | null>(null)
 
   const onSearch = useMemo(
     () =>
@@ -53,24 +54,30 @@ export default function ApprovalQueue() {
     const all = hostels.flatMap((h) =>
       h.pendingRequests.map((r) => ({ ...r, _id: r.id, hostel: h }))
     )
-    return all.filter((r) => {
-      if (pill === "all") {
-        if (!(r.status === "pending" || r.status === "on_hold")) return false
-      } else if (pill === "on_hold") {
-        if (r.status !== "on_hold") return false
-      } else if (pill === "plan") {
-        if (!(r.type === "plan_upgrade" || r.type === "plan_downgrade")) return false
-      } else if (r.type !== pill) {
-        return false
-      }
-      if (!query) return true
-      const hay = [r.hostel.name, r.hostel.hostelCode].join(" ").toLowerCase()
-      return hay.includes(query)
-    })
+    return all
+      .filter((r) => {
+        if (pill === "all") {
+          if (!(r.status === "pending" || r.status === "on_hold")) return false
+        } else if (pill === "on_hold") {
+          if (r.status !== "on_hold") return false
+        } else if (pill === "plan") {
+          if (!(r.type === "plan_upgrade" || r.type === "plan_downgrade")) return false
+        } else if (r.type !== pill) {
+          return false
+        }
+        if (!query) return true
+        const hay = [r.hostel.name, r.hostel.hostelCode].join(" ").toLowerCase()
+        return hay.includes(query)
+      })
+      .sort((a, b) => {
+        if (a.submittedOn !== b.submittedOn) return a.submittedOn < b.submittedOn ? 1 : -1
+        return requestSerial(b.requestNo) - requestSerial(a.requestNo)
+      })
   }, [hostels, pill, query])
 
   const columns = useMemo<ColumnDef<Row>[]>(
     () => [
+      { header: "Request ID", cell: ({ row }) => row.original.requestNo },
       { header: "Hostel Name", cell: ({ row }) => row.original.hostel.name },
       { header: "Request Type", cell: ({ row }) => requestTypeLabel(row.original.type) },
       { header: "Plan Requested", cell: ({ row }) => <PlanBadge plan={row.original.planRequested ?? row.original.hostel.plan} /> },
@@ -84,8 +91,8 @@ export default function ApprovalQueue() {
           <TableActionMenu
             actions={[
               {
-                label: "Approve",
-                onClick: () => approveRequest(row.original.hostel.hostelId, row.original.id),
+                label: "Mark as approved",
+                onClick: () => setApproveTarget(row.original),
               },
               {
                 label: "Reject",
@@ -104,7 +111,7 @@ export default function ApprovalQueue() {
         ),
       },
     ],
-    [approveRequest]
+    []
   )
 
   if (loading) return <RevenueSkeleton rows={8} />
@@ -131,6 +138,20 @@ export default function ApprovalQueue() {
             <DebounceAsyncSearch onSearch={onSearch} debounceTimeout={300} placeholder="Search hostel" />
           </>
         }
+      />
+      <ConfirmDialog
+        open={Boolean(approveTarget)}
+        setOpen={(open) => {
+          if (!open) setApproveTarget(null)
+        }}
+        title="Approve this request?"
+        description="The subscription updates and an invoice is created for this request."
+        confirmLabel="Mark as approved"
+        onConfirm={() => {
+          if (!approveTarget) return
+          approveRequest(approveTarget.hostel.hostelId, approveTarget.id, undefined, { createInvoice: true })
+          setApproveTarget(null)
+        }}
       />
       <ComingSoonDialog open={notifyOpen} setOpen={setNotifyOpen} />
       <EditBeforeApproveDrawer row={edit} onClose={() => setEdit(null)} />

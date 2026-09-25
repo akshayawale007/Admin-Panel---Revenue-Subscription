@@ -82,7 +82,8 @@ export function BackdropSidebar() {
                         (item.link === "/university/" &&
                           (pathname.startsWith("/university/") || pathname.startsWith("/college/"))) ||
                         (item.link === "/hostel/" && pathname.startsWith("/hostel/")) ||
-                        (item.link === "/revenue/" && pathname.startsWith("/revenue"))
+                        (item.link === "/revenue/" && pathname.startsWith("/revenue")) ||
+                        (item.link === "/latest-changes/" && pathname.startsWith("/latest-changes"))
 
                       return (
                         <SidebarItem
