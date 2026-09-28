@@ -10,11 +10,12 @@ import OverviewTab from "./tabs/OverviewTab"
 import PendingRequestsTab from "./tabs/PendingRequestsTab"
 import InvoicesTab from "./tabs/InvoicesTab"
 import HistoryTab from "./tabs/HistoryTab"
+import UpgradeActionButton from "@/component/Revenue/Shared/UpgradeActionButton"
 import UpgradeSubscriptionModal, {
   type UpgradeKind,
 } from "@/component/Revenue/Shared/UpgradeSubscriptionModal"
 import HostelIdentityCard from "@/component/Revenue/Shared/HostelIdentityCard"
-import { isInGracePeriod, isSubscriptionExpired } from "@/lib/revenue/utils"
+import { isSubscriptionExpired } from "@/lib/revenue/utils"
 import type { PlanTier } from "@/lib/revenue/types"
 
 function TabLabel({ title, count }: { title: string; count?: number }) {
@@ -32,7 +33,7 @@ function TabLabel({ title, count }: { title: string; count?: number }) {
 
 export default function HostelDetailPage() {
   const params = useParams<{ id: string }>()
-  const { getHostel, planModules, settings } = useRevenue()
+  const { getHostel, planModules } = useRevenue()
   const hostel = getHostel(params.id)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [compareOpen, setCompareOpen] = useState(false)
@@ -58,11 +59,7 @@ export default function HostelDetailPage() {
     (r) => r.status === "pending" || r.status === "on_hold"
   ).length
   const pendingInvoiceCount = hostel.invoices.filter((inv) => inv.status === "unpaid").length
-  const graceDays = settings.defaultGraceDays
-  const inPeriodActive =
-    hostel.status === "active" &&
-    !isInGracePeriod(hostel, graceDays) &&
-    !isSubscriptionExpired(hostel, graceDays)
+  const inPeriodActive = hostel.status === "active" && !isSubscriptionExpired(hostel)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-6">
@@ -72,7 +69,11 @@ export default function HostelDetailPage() {
         <div className="modules-tabs modules-tabs--fit relative px-4 pt-1 pb-4 [&_[role=tablist]]:pr-56">
           <div className="hostel-tab-actions absolute top-2 right-4 z-10">
             <Button title="Compare plans" variant="secondary" onClick={() => setCompareOpen(true)} />
-            <Button title="Upgrade" onClick={() => openUpgrade()} />
+            <UpgradeActionButton
+              disabled={pendingRequestCount > 0}
+              hint="An upgrade request is already open for this hostel. Approve or reject it before creating another. The hostel may withdraw it instead."
+              onClick={() => openUpgrade()}
+            />
           </div>
           <Tabs variant="underline">
             <TabItem active title="Subscriptions">

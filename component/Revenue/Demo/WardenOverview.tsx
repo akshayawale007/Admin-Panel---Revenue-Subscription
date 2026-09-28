@@ -1,13 +1,11 @@
 "use client"
 
-import { useRevenue } from "@/component/Revenue/RevenueProvider"
 import { MODULE_PILL_CURRENT, PLAN_COLORS } from "@/lib/revenue/constants"
-import { remainingFraction } from "@/lib/revenue/subscriptionBilling"
+import { daysLeftInPeriod } from "@/lib/revenue/subscriptionBilling"
 import {
   billingCycleLabel,
   formatDate,
   hostelRate,
-  isInGracePeriod,
   isInactiveSubscription,
   isSubscriptionExpired,
   isTrialSubscription,
@@ -22,23 +20,28 @@ function Fact({
   label,
   value,
   hint,
+  valueClassName,
 }: {
   label: string
   value: string | number
-  hint?: string
+  hint?: string | string[]
+  valueClassName?: string
 }) {
+  const hints = hint == null ? [] : Array.isArray(hint) ? hint : [hint]
   return (
     <div className="min-w-[8.5rem] flex-1 py-1">
       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-(--yoco-text-muted)">{label}</p>
-      <p className="mt-1.5 text-[15px] font-semibold tracking-tight text-(--yoco-text)">{value}</p>
-      {hint ? <p className="mt-0.5 text-xs leading-snug text-(--yoco-text-muted)">{hint}</p> : null}
+      <p className={`mt-1.5 text-[15px] font-semibold tracking-tight ${valueClassName ?? "text-(--yoco-text)"}`}>{value}</p>
+      {hints.map((line) => (
+        <p key={line} className="mt-0.5 text-xs leading-snug text-(--yoco-text-muted)">
+          {line}
+        </p>
+      ))}
     </div>
   )
 }
 
 function LifecycleNote({ hostel }: { hostel: HostelSubscription }) {
-  const { settings } = useRevenue()
-  const graceDays = settings.defaultGraceDays
   const upcoming = upcomingChangeMessage(hostel)
   const trial = isTrialSubscription(hostel) && hostel.status === "trial"
 
@@ -48,19 +51,13 @@ function LifecycleNote({ hostel }: { hostel: HostelSubscription }) {
         bar: "bg-slate-400",
         tone: "text-slate-800 bg-slate-50/80",
       }
-    : isSubscriptionExpired(hostel, graceDays)
+    : isSubscriptionExpired(hostel)
       ? {
           text: "Your subscription has expired. Renew the current plan or upgrade to continue using modules.",
           bar: "bg-red-500",
           tone: "text-red-900 bg-red-50/70",
         }
-      : isInGracePeriod(hostel, graceDays)
-        ? {
-            text: "Grace period has started. Renew your current plan or upgrade to continue without interruption.",
-            bar: "bg-amber-500",
-            tone: "text-amber-950 bg-amber-50/70",
-          }
-        : trial
+      : trial
           ? {
               text: "You are on a trial. Please select a plan to continue.",
               bar: "bg-[#674D9F]",
@@ -80,15 +77,16 @@ function LifecycleNote({ hostel }: { hostel: HostelSubscription }) {
   )
 }
 
+function timeLeftLabel(renewalDate: string) {
+  const days = daysLeftInPeriod(renewalDate)
+  if (!days) return "Original billing period has ended"
+  return `${days} day${days === 1 ? "" : "s"} left`
+}
+
 export default function WardenOverview({ hostel }: { hostel: HostelSubscription }) {
-  const { settings } = useRevenue()
-  const graceDays = settings.defaultGraceDays
-  const period = remainingFraction(hostel.renewalDate, hostel.billingCycle, {
-    periodStart: hostel.subscriptionStartDate,
-  })
-  const expired = isInactiveSubscription(hostel, graceDays)
+  const expired = isInactiveSubscription(hostel)
   const currentRate = hostelRate(hostel)
-  const lifecycle = subscriptionLifecycleCaption(hostel, graceDays)
+  const lifecycle = subscriptionLifecycleCaption(hostel)
   const trial = isTrialSubscription(hostel)
   const moduleCount = expired ? 0 : hostel.activeModules.length
   const original = hostel.activatedStudentCount ?? hostel.studentCount
@@ -132,9 +130,9 @@ export default function WardenOverview({ hostel }: { hostel: HostelSubscription 
           <div className="flex flex-wrap gap-y-5">
             <div className="min-w-[10rem] flex-1 pr-8">
               <Fact
-                label="Seats"
+                label="Billed seats"
                 value={hostel.studentCount}
-                hint={`Original ${original} · Added mid-cycle ${added}`}
+                hint={[`Original seats ${original}`, `Seats added mid-plan ${added}`]}
               />
             </div>
             <div className="min-w-[10rem] flex-1 border-(--yoco-border-subtle) pr-8 sm:border-l sm:pl-8">
@@ -148,11 +146,10 @@ export default function WardenOverview({ hostel }: { hostel: HostelSubscription 
             </div>
             <div className="min-w-[10rem] flex-1 border-(--yoco-border-subtle) sm:border-l sm:pl-8">
               <Fact
-                label="Time left"
-                value={
-                  period.inOriginalPeriod
-                    ? `${period.monthsLeft} month${period.monthsLeft === 1 ? "" : "s"} left`
-                    : "Original billing period has ended"
+                label="Renewal"
+                value={timeLeftLabel(hostel.renewalDate)}
+                valueClassName={
+                  daysLeftInPeriod(hostel.renewalDate) <= 30 ? "text-red-600" : undefined
                 }
               />
             </div>

@@ -10,7 +10,7 @@ import type {
   SubscriptionStatus,
   UpcomingKind,
 } from "./types"
-import { DEFAULT_SETTINGS, MODULE_CATALOG, STANDARD_TIERS, TIER_ORDER } from "./constants"
+import { MODULE_CATALOG, STANDARD_TIERS, TIER_ORDER } from "./constants"
 import { billedRateFor } from "./pricing"
 
 export { addedModulesRate, billedRateFor, customPlanMonthlyRate, customPlanRateBreakdown, formatRate, hostelRate, rateForPlan, roundRate } from "./pricing"
@@ -57,7 +57,7 @@ export const statusLabel = (status: string): string => {
     rejected: "Rejected",
     paid: "Paid",
     unpaid: "Unpaid",
-    grace: "Grace",
+    withdrawn: "Withdrawn",
   }
   return map[status] ?? status
 }
@@ -75,13 +75,12 @@ export const invoiceTypeLabel = (type: string): string => {
 
 export const requestTypeLabel = (type: string): string => {
   const map: Record<string, string> = {
-    plan_upgrade: "Plan upgrade",
-    plan_downgrade: "Plan downgrade",
-    student_count_update: "Seat count update",
-    module_add_remove: "Module add/remove",
-    grace_period_extension: "Grace period extension",
-    new_subscription: "New subscription",
-    renewal_after_expiry: "Renewal after expiry",
+    plan_upgrade: "Change subscription plan (upgrade)",
+    plan_downgrade: "Change subscription plan (downgrade)",
+    student_count_update: "Change seats",
+    module_add_remove: "Custom module package",
+    new_subscription: "Change subscription plan",
+    renewal_after_expiry: "Change subscription plan (renewal)",
   }
   return map[type] ?? type
 }
@@ -260,73 +259,40 @@ type AccessHostel = {
   modulesLocked?: boolean
 }
 
-export const subscriptionAccessEndDate = (
-  hostel: AccessHostel,
-  graceDays = DEFAULT_SETTINGS.defaultGraceDays
-) => {
-  const renewal = dayjs(hostel.renewalDate)
-  if (!renewal.isValid() || hostel.status === "trial") return renewal
-  return renewal.add(Math.max(0, graceDays), "day")
-}
+export const subscriptionAccessEndDate = (hostel: AccessHostel) => dayjs(hostel.renewalDate)
 
-export const isInGracePeriod = (
-  hostel: AccessHostel,
-  graceDays = DEFAULT_SETTINGS.defaultGraceDays
-): boolean => {
-  if (hostel.status === "deactivated" || hostel.status === "expired" || hostel.modulesLocked) return false
-  if (hostel.status === "trial") return false
-  const renewal = dayjs(hostel.renewalDate)
-  const accessEnd = subscriptionAccessEndDate(hostel, graceDays)
-  if (!renewal.isValid() || !accessEnd.isValid()) return false
-  const today = dayjs()
-  return !renewal.isAfter(today, "day") && accessEnd.isAfter(today, "day")
-}
-
-export const isSubscriptionExpired = (
-  hostel: AccessHostel,
-  graceDays = DEFAULT_SETTINGS.defaultGraceDays
-): boolean => {
+export const isSubscriptionExpired = (hostel: AccessHostel): boolean => {
   if (hostel.status === "deactivated") return false
   if (hostel.status === "expired" || hostel.modulesLocked) return true
-  const end = subscriptionAccessEndDate(hostel, graceDays)
+  const end = subscriptionAccessEndDate(hostel)
   if (!end.isValid()) return false
   return !end.isAfter(dayjs(), "day")
 }
 
-export const effectiveSubscriptionStatus = (
-  hostel: {
-    status: SubscriptionStatus
-    renewalDate: string
-    modulesLocked?: boolean
-  },
-  graceDays = DEFAULT_SETTINGS.defaultGraceDays
-): SubscriptionStatus => {
+export const effectiveSubscriptionStatus = (hostel: {
+  status: SubscriptionStatus
+  renewalDate: string
+  modulesLocked?: boolean
+}): SubscriptionStatus => {
   if (hostel.status === "deactivated") return "deactivated"
-  if (isSubscriptionExpired(hostel, graceDays)) return "expired"
+  if (isSubscriptionExpired(hostel)) return "expired"
   if (hostel.status === "trial") return "active"
   return hostel.status
 }
 
-export const isInactiveSubscription = (
-  hostel: {
-    status: SubscriptionStatus
-    renewalDate: string
-    modulesLocked?: boolean
-  },
-  graceDays = DEFAULT_SETTINGS.defaultGraceDays
-): boolean => hostel.status === "deactivated" || isSubscriptionExpired(hostel, graceDays)
+export const isInactiveSubscription = (hostel: {
+  status: SubscriptionStatus
+  renewalDate: string
+  modulesLocked?: boolean
+}): boolean => hostel.status === "deactivated" || isSubscriptionExpired(hostel)
 
-export const subscriptionLifecycleCaption = (
-  hostel: {
-    status: SubscriptionStatus
-    renewalDate: string
-    modulesLocked?: boolean
-  },
-  graceDays = DEFAULT_SETTINGS.defaultGraceDays
-): { label: string; className: string } => {
+export const subscriptionLifecycleCaption = (hostel: {
+  status: SubscriptionStatus
+  renewalDate: string
+  modulesLocked?: boolean
+}): { label: string; className: string } => {
   if (hostel.status === "deactivated") return { label: "Deactivated", className: "text-slate-600" }
-  if (isSubscriptionExpired(hostel, graceDays)) return { label: "Expired", className: "text-red-600" }
-  if (isInGracePeriod(hostel, graceDays)) return { label: "Grace", className: "text-amber-600" }
+  if (isSubscriptionExpired(hostel)) return { label: "Expired", className: "text-red-600" }
   return { label: "Active", className: "text-green-600" }
 }
 
@@ -337,9 +303,7 @@ export const isTrialSubscription = (hostel: {
 
 export const subscriptionPlanLabel = (hostel: {
   plan: PlanTier | null
-  status: SubscriptionStatus
-  trialLapsed?: boolean
-}): string => (isTrialSubscription(hostel) ? "Trial" : planLabel(hostel.plan))
+}): string => planLabel(hostel.plan)
 
 export const lowestTierForModules = (modules: string[]): PlanTier => {
   let tier: PlanTier = "PREMIUM"

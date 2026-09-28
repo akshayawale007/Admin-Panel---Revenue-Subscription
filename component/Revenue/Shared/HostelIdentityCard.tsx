@@ -1,8 +1,7 @@
 "use client"
 
 import PlanBadge from "@/component/Revenue/Shared/PlanBadge"
-import { useRevenue } from "@/component/Revenue/RevenueProvider"
-import { initials, isTrialSubscription, subscriptionLifecycleCaption } from "@/lib/revenue/utils"
+import { initials, subscriptionLifecycleCaption } from "@/lib/revenue/utils"
 import type { HostelSubscription } from "@/lib/revenue/types"
 
 export default function HostelIdentityCard({
@@ -14,8 +13,7 @@ export default function HostelIdentityCard({
   showAvatar?: boolean
   codeLabel?: string
 }) {
-  const { settings } = useRevenue()
-  const caption = subscriptionLifecycleCaption(hostel, settings.defaultGraceDays)
+  const caption = subscriptionLifecycleCaption(hostel)
 
   return (
     <div className="yoco-card flex flex-wrap items-center gap-4 p-4">
@@ -32,12 +30,7 @@ export default function HostelIdentityCard({
       </div>
       <div className="flex shrink-0 flex-col items-start gap-1.5 pr-6">
         <p className={`text-sm font-semibold uppercase tracking-wide ${caption.className}`}>{caption.label}</p>
-        <PlanBadge
-          plan={hostel.plan}
-          trial={isTrialSubscription(hostel)}
-          size="sm"
-          className="uppercase tracking-wide"
-        />
+        <PlanBadge plan={hostel.plan} size="sm" className="uppercase tracking-wide" />
       </div>
     </div>
   )

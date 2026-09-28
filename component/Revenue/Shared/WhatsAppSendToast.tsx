@@ -15,8 +15,6 @@ export const WHATSAPP_TEMPLATES: Record<WhatsAppMessageType, (name: string, extr
     `Hi ${name}, your plan request was not approved.${extra ? ` Reason: ${extra}` : ""}`,
   on_hold: (name) => `Hi ${name}, we need more info — our admin will contact you.`,
   invoice_sent: (name) => `Hi ${name}, your invoice has been generated. Please find the details in the admin panel.`,
-  grace_period_warning: (name) =>
-    `Hi ${name}, your subscription is in the grace period. Please renew to restore full access.`,
   module_locked: (name) =>
     `Hi ${name}, modules for your hostel have been locked because the subscription expired.`,
 }

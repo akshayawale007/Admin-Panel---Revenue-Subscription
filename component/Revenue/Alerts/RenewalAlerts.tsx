@@ -25,7 +25,6 @@ function daysClass(days: number) {
 
 export default function RenewalAlerts() {
   const { hostels, updateHostel, settings, createLinkedInvoice, planRates, customModuleRates, planModules } = useRevenue()
-  const graceDays = settings.defaultGraceDays
   const router = useRouter()
   const [notifyOpen, setNotifyOpen] = useState(false)
   const [invoiceHostel, setInvoiceHostel] = useState<Row | null>(null)
@@ -47,12 +46,12 @@ export default function RenewalAlerts() {
     () =>
       hostels
         .filter((h) => {
-          const status = effectiveSubscriptionStatus(h, graceDays)
+          const status = effectiveSubscriptionStatus(h)
           return status === "active"
         })
         .map((h) => ({
           ...h,
-          daysLeft: daysUntil(subscriptionAccessEndDate(h, graceDays).format("YYYY-MM-DD")),
+          daysLeft: daysUntil(subscriptionAccessEndDate(h).format("YYYY-MM-DD")),
         }))
         .filter((h) => h.daysLeft >= 0 && h.daysLeft <= 30)
         .filter((h) => {
@@ -61,7 +60,7 @@ export default function RenewalAlerts() {
           return hay.includes(query)
         })
         .sort((a, b) => a.daysLeft - b.daysLeft),
-    [graceDays, hostels, query]
+    [hostels, query]
   )
 
   const pageRows = rows.slice((page - 1) * limit, page * limit)
@@ -69,7 +68,7 @@ export default function RenewalAlerts() {
   const columns = useMemo<ColumnDef<Row>[]>(
     () => [
       { accessorKey: "name", header: "Hostel Name" },
-      { header: "Plan", cell: ({ row }) => <PlanBadge plan={row.original.plan} trial={row.original.status === "trial"} /> },
+      { header: "Plan", cell: ({ row }) => <PlanBadge plan={row.original.plan} /> },
       { accessorKey: "studentCount", header: "Seats" },
       { header: "Expiry Date", cell: ({ row }) => formatDate(row.original.renewalDate) },
       {

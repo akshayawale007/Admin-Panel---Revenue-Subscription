@@ -29,15 +29,12 @@ import {
   periodMonthsFromDates,
   roundRate,
   isHigherTier,
-  isInGracePeriod,
   isLowerTier,
   isStandardTier,
   isSubscriptionExpired,
-  isTrialSubscription,
   moduleByKey,
   packagedUpgradeOptions,
   planLabel,
-  subscriptionAccessEndDate,
   subscriptionLifecycleCaption,
 } from "@/lib/revenue/utils"
 import type { BillingCycle, HostelSubscription, PlanTier } from "@/lib/revenue/types"
@@ -61,6 +58,11 @@ export const UPGRADE_KIND_COPY: Record<UpgradeKind, { title: string; blurb: stri
 
 const STEPS = ["Choose", "Configure", "Review"] as const
 const LAST_STEP = STEPS.length - 1
+
+function windowDays(start: string, end: string) {
+  const days = dayjs(end).startOf("day").diff(dayjs(start).startOf("day"), "day")
+  return Math.max(1, days)
+}
 
 type Props = {
   open: boolean
@@ -126,20 +128,16 @@ export default function UpgradeSubscriptionModal({
   const [trialDays, setTrialDays] = useState(30)
   const initKey = useRef<string | null>(null)
 
-  const activated = hostel.activatedStudentCount ?? hostel.studentCount
-  const added = hostel.addedStudentCount ?? Math.max(0, hostel.studentCount - activated)
-  const graceDays = settings.defaultGraceDays
-  const expired = isSubscriptionExpired(hostel, graceDays)
-  const inGrace = isInGracePeriod(hostel, graceDays)
+  const expired = isSubscriptionExpired(hostel)
   const trial = hostel.status === "trial"
-  const needsRenewal = expired || inGrace
+  const needsRenewal = expired
   const deactivated = hostel.status === "deactivated"
   const seatChangeLocked = expired || deactivated
   const needsNewCycle = trial || needsRenewal || deactivated
   const inPeriodActive = hostel.status === "active" && !needsNewCycle
-  const decreaseLocked = inPeriodActive || inGrace || trial
-  const lockCurrentModules = inPeriodActive || inGrace || trial
-  const planCaption = subscriptionLifecycleCaption(hostel, graceDays)
+  const decreaseLocked = inPeriodActive || trial
+  const lockCurrentModules = inPeriodActive || trial
+  const planCaption = subscriptionLifecycleCaption(hostel)
   const planOptions = inPeriodActive ? packagedUpgradeOptions(hostel.plan) : STANDARD_TIERS
   const allowedInitialPlan =
     initialPlan && isStandardTier(initialPlan) && (!inPeriodActive || planOptions.includes(initialPlan))
@@ -206,12 +204,11 @@ export default function UpgradeSubscriptionModal({
   const studentDelta = nextStudentTotal - hostel.studentCount
   const nextPlan = kind === "plan" && plan ? plan : hostel.plan
   const planUpgraded = Boolean(kind === "plan" && hostel.plan && nextPlan && isHigherTier(nextPlan, hostel.plan))
-  const accessEnd = subscriptionAccessEndDate(hostel, graceDays).format("YYYY-MM-DD")
-  const { monthsLeft, periodMonths, inOriginalPeriod } = remainingFraction(hostel.renewalDate, hostel.billingCycle, {
-    accessEndDate: accessEnd,
-    useAccessWindow: inGrace && kind === "modules",
+  const { monthsLeft, periodMonths, inOriginalPeriod, periodEnd } = remainingFraction(hostel.renewalDate, hostel.billingCycle, {
     periodStart: hostel.subscriptionStartDate,
   })
+  const midCycleDays = windowDays(dayjs().format("YYYY-MM-DD"), periodEnd)
+  const cycleDays = cycleStart && cycleEnd ? windowDays(cycleStart, cycleEnd) : 0
   const planModulesForRate =
     kind === "modules"
       ? mergedModules
@@ -331,12 +328,13 @@ export default function UpgradeSubscriptionModal({
     close()
   }
 
-  const gstPct = `${settings.gstRate}%`
+  const cgstPct = `${settings.cgstRate}%`
+  const sgstPct = `${settings.sgstRate}%`
+  const taxHint = `Includes CGST ${cgstPct} and SGST ${sgstPct}`
   const moduleRateLabel = customModules.length ? `${formatRate(newRate)}/seat/mo` : "—"
   const cycleRange = cycleStart && cycleEnd ? `${formatDate(cycleStart)} – ${formatDate(cycleEnd)}` : "—"
   const currentRange = `${formatDate(hostel.subscriptionStartDate)} – ${formatDate(hostel.renewalDate)}`
   const invoiceTotals = {
-    gst: formatINR(kind === "students" ? studentGst.gst : planGst.gst),
     total: formatINR(kind === "students" ? studentGst.total : planGst.total),
     subtotal: formatINR(kind === "students" ? studentCharge : billedNow),
   }
@@ -349,14 +347,14 @@ export default function UpgradeSubscriptionModal({
           meta: `${hostel.studentCount} → ${nextStudentTotal} seats · through ${formatDate(hostel.renewalDate)}`,
           highlights: [
             { label: "Rate", value: `${formatRate(oldRate)}`, hint: "Per seat / month (contracted)", tone: "rate" as const },
-            { label: "Invoice total", value: invoiceTotals.total, hint: `Includes GST ${gstPct}`, tone: "total" as const },
+            { label: "Invoice total", value: invoiceTotals.total, hint: taxHint, tone: "total" as const },
           ],
           groups: [
             {
               title: "Seats",
               lines: [
-                { label: "Current billed", value: String(hostel.studentCount) },
-                { label: "Seats to add", value: String(studentDelta) },
+                { label: "Billed seats", value: String(hostel.studentCount) },
+                { label: "Additional seats", value: String(studentDelta) },
                 { label: "New total", value: String(nextStudentTotal), emphasis: true },
               ],
             },
@@ -364,8 +362,9 @@ export default function UpgradeSubscriptionModal({
               title: "This invoice",
               lines: [
                 { label: "Months left", value: `${monthsLeft} of ${periodMonths}` },
-                { label: "Charge", value: invoiceTotals.subtotal, hint: `${studentDelta} × ${formatRate(oldRate)} × ${monthsLeft} mo` },
-                { label: `GST (${gstPct})`, value: invoiceTotals.gst },
+                { label: "Charge", value: invoiceTotals.subtotal, hint: `${studentDelta} stu × ${formatRate(oldRate)} × ${midCycleDays} days` },
+                { label: `CGST (${cgstPct})`, value: formatINR(studentGst.cgst) },
+                { label: `SGST (${sgstPct})`, value: formatINR(studentGst.sgst) },
                 { label: "Invoice total", value: invoiceTotals.total, emphasis: true },
               ],
             },
@@ -398,7 +397,7 @@ export default function UpgradeSubscriptionModal({
       {
         label: "Invoice total",
         value: startAsTrial ? formatINR(0) : invoiceTotals.total,
-        hint: startAsTrial ? `${Math.max(1, Math.floor(trialDays) || 30)}-day trial · no charge` : `Includes GST ${gstPct}`,
+        hint: startAsTrial ? `${Math.max(1, Math.floor(trialDays) || 30)}-day trial · no charge` : taxHint,
         tone: "total" as const,
       },
     ],
@@ -422,10 +421,11 @@ export default function UpgradeSubscriptionModal({
                   label: "Charge",
                   value: invoiceTotals.subtotal,
                   hint: planCharge
-                    ? `${nextStudentTotal} × ${formatRate(newRate - oldRate)} × ${monthsLeft} mo`
+                    ? `${nextStudentTotal} stu × ${formatRate(newRate - oldRate)} × ${midCycleDays} days`
                     : undefined,
                 },
-                { label: `GST (${gstPct})`, value: invoiceTotals.gst },
+                { label: `CGST (${cgstPct})`, value: formatINR(planGst.cgst) },
+                { label: `SGST (${sgstPct})`, value: formatINR(planGst.sgst) },
                 { label: "Invoice total", value: invoiceTotals.total, emphasis: true },
               ]
             : [
@@ -436,9 +436,10 @@ export default function UpgradeSubscriptionModal({
                 {
                   label: "Charge",
                   value: invoiceTotals.subtotal,
-                  hint: cycleCharge ? `${nextStudentTotal} × ${formatRate(newRate)} × ${cycleMonths} mo` : undefined,
+                  hint: cycleCharge ? `${nextStudentTotal} stu × ${formatRate(newRate)} × ${cycleDays} days` : undefined,
                 },
-                { label: `GST (${gstPct})`, value: invoiceTotals.gst },
+                { label: `CGST (${cgstPct})`, value: formatINR(planGst.cgst) },
+                { label: `SGST (${sgstPct})`, value: formatINR(planGst.sgst) },
                 { label: "Invoice total", value: invoiceTotals.total, emphasis: true },
               ],
       },
@@ -475,14 +476,14 @@ export default function UpgradeSubscriptionModal({
     title: "Plan",
     value: "Custom plan",
     meta: lockCurrentModules
-      ? `${nextStudentTotal} seats · remaining access through ${formatDate(inGrace ? accessEnd : hostel.renewalDate)}`
+      ? `${nextStudentTotal} seats · remaining access through ${formatDate(hostel.renewalDate)}`
       : `${nextStudentTotal} seats${billingCycle ? ` · ${billingCycleLabel(billingCycle)}` : ""} · ${cycleRange}`,
     highlights: [
       { label: "Custom rate", value: formatRate(newRate), hint: "Final billed rate for this custom plan", tone: "rate" as const },
       {
         label: "Invoice total",
         value: trial && lockCurrentModules ? formatINR(0) : invoiceTotals.total,
-        hint: trial && lockCurrentModules ? "Billed when the paid cycle starts" : `Includes GST ${gstPct}`,
+        hint: trial && lockCurrentModules ? "Billed when the paid cycle starts" : taxHint,
         tone: "total" as const,
       },
     ],
@@ -500,10 +501,11 @@ export default function UpgradeSubscriptionModal({
                     label: "Charge",
                     value: invoiceTotals.subtotal,
                     hint: moduleCharge
-                      ? `${nextStudentTotal} × ${formatRate(newRate - oldRate)} × ${monthsLeft} mo`
+                      ? `${nextStudentTotal} stu × ${formatRate(newRate - oldRate)} × ${midCycleDays} days`
                       : undefined,
                   },
-                  { label: `GST (${gstPct})`, value: invoiceTotals.gst },
+                  { label: `CGST (${cgstPct})`, value: formatINR(planGst.cgst) },
+                  { label: `SGST (${sgstPct})`, value: formatINR(planGst.sgst) },
                   { label: "Invoice total", value: invoiceTotals.total, emphasis: true },
                 ]
               : [
@@ -514,9 +516,10 @@ export default function UpgradeSubscriptionModal({
                   {
                     label: "Charge",
                     value: invoiceTotals.subtotal,
-                    hint: cycleCharge ? `${nextStudentTotal} × ${formatRate(newRate)} × ${cycleMonths} mo` : undefined,
+                    hint: cycleCharge ? `${nextStudentTotal} stu × ${formatRate(newRate)} × ${cycleDays} days` : undefined,
                   },
-                  { label: `GST (${gstPct})`, value: invoiceTotals.gst },
+                  { label: `CGST (${cgstPct})`, value: formatINR(planGst.cgst) },
+                  { label: `SGST (${sgstPct})`, value: formatINR(planGst.sgst) },
                   { label: "Invoice total", value: invoiceTotals.total, emphasis: true },
                 ],
       },
@@ -556,7 +559,7 @@ export default function UpgradeSubscriptionModal({
           <div className="flex flex-wrap items-start gap-x-5 gap-y-2 text-sm">
             <Fact label="Plan">
               <div className="flex flex-col items-start gap-0.5">
-                <PlanBadge plan={hostel.plan} trial={isTrialSubscription(hostel)} />
+                <PlanBadge plan={hostel.plan} />
                 <span className={`text-[10px] font-medium leading-tight ${planCaption.className}`}>
                   {planCaption.label}
                 </span>
@@ -565,6 +568,7 @@ export default function UpgradeSubscriptionModal({
             <Fact label="Billing period">
               {formatDate(hostel.subscriptionStartDate)} – {formatDate(hostel.renewalDate)}
             </Fact>
+            <Fact label="Billed seats">{hostel.studentCount}</Fact>
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-(--yoco-text-muted)">Active modules</p>
@@ -590,14 +594,6 @@ export default function UpgradeSubscriptionModal({
             {step === 0 ? (
             <div className="w-full">
               <section>
-                <div className="flex flex-wrap items-end gap-x-8 gap-y-3">
-                  <Fact label="Original seats">{activated}</Fact>
-                  <Fact label="Added seats">{added}</Fact>
-                  <Fact label="Current billed">{hostel.studentCount}</Fact>
-                </div>
-              </section>
-
-              <section className="mt-5 border-t border-(--yoco-border-subtle) pt-5">
                 <div className="grid gap-3 md:grid-cols-3">
                   {(Object.keys(UPGRADE_KIND_COPY) as UpgradeKind[]).map((option) => {
                     const selected = kind === option
@@ -645,7 +641,7 @@ export default function UpgradeSubscriptionModal({
                   <div className="mt-3 flex flex-col gap-3">
                     <div className="grid items-stretch gap-3 sm:grid-cols-2">
                       <div className="rounded-xl border border-(--yoco-border-subtle) px-3 py-2">
-                        <p className="text-[11px] text-(--yoco-text-muted)">Current billed</p>
+                        <p className="text-[11px] text-(--yoco-text-muted)">Billed seats</p>
                         <p className="text-lg font-semibold">{hostel.studentCount}</p>
                       </div>
                       <label className="rounded-xl border border-(--yoco-border-subtle) px-3 py-2">
@@ -661,7 +657,7 @@ export default function UpgradeSubscriptionModal({
                     </div>
                     {decreaseLocked && studentDelta < 0 ? (
                       <p className="text-xs font-semibold text-rose-600">
-                        New seat total cannot be lower than the current billed count ({hostel.studentCount}).
+                        New seat total cannot be lower than the billed seats ({hostel.studentCount}).
                       </p>
                     ) : (
                       <p className="text-xs text-(--yoco-text-muted)">
@@ -746,7 +742,7 @@ export default function UpgradeSubscriptionModal({
                     </label>
                     {decreaseLocked && studentDelta < 0 ? (
                       <p className="text-xs font-semibold text-rose-600">
-                        New seat total cannot be lower than the current billed count ({hostel.studentCount}).
+                        New seat total cannot be lower than the billed seats ({hostel.studentCount}).
                       </p>
                     ) : null}
                     {deactivated ? (
@@ -829,9 +825,7 @@ export default function UpgradeSubscriptionModal({
                       <p className="text-xs text-(--yoco-text-muted)">
                         {trial
                           ? "Added modules apply during trial at ₹0. Paid custom rates start on the next paid cycle."
-                          : inGrace
-                            ? `Added modules are billed for the remaining access window through ${formatDate(accessEnd)}.`
-                            : `Custom modules apply to the current billing period (${formatDate(hostel.subscriptionStartDate)} – ${formatDate(hostel.renewalDate)}).`}
+                          : `Custom modules apply to the current billing period (${formatDate(hostel.subscriptionStartDate)} – ${formatDate(hostel.renewalDate)}).`}
                       </p>
                     ) : null}
                   </div>
@@ -860,7 +854,7 @@ export default function UpgradeSubscriptionModal({
                   <InvoicePreview
                     title={planInvoice.title}
                     meta={planInvoice.meta}
-                    badge={<PlanBadge plan={nextPlan} trial={startAsTrial} />}
+                    badge={<PlanBadge plan={nextPlan} />}
                     highlights={planInvoice.highlights}
                     groups={planInvoice.groups}
                   />

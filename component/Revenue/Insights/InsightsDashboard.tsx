@@ -15,8 +15,7 @@ import type { PlanTier } from "@/lib/revenue/types"
 const BAR_SIZE = 16
 
 export default function InsightsDashboard() {
-  const { hostels, settings } = useRevenue()
-  const graceDays = settings.defaultGraceDays
+  const { hostels } = useRevenue()
 
   const data = useMemo(() => {
     const withPlan = hostels.filter((h) => h.plan)
@@ -43,9 +42,9 @@ export default function InsightsDashboard() {
       .slice(0, 5)
 
     const topHostel = [...hostels].sort((a, b) => b.annualValue - a.annualValue)[0]
-    const totalARR = hostels.filter((h) => effectiveSubscriptionStatus(h, graceDays) === "active").reduce((s, h) => s + h.annualValue, 0)
+    const totalARR = hostels.filter((h) => effectiveSubscriptionStatus(h) === "active").reduce((s, h) => s + h.annualValue, 0)
     const top10 = [...hostels]
-      .filter((h) => effectiveSubscriptionStatus(h, graceDays) === "active")
+      .filter((h) => effectiveSubscriptionStatus(h) === "active")
       .sort((a, b) => b.annualValue - a.annualValue)
       .slice(0, 10)
     const top10Share = totalARR ? Math.round((top10.reduce((s, h) => s + h.annualValue, 0) / totalARR) * 100) : 0
@@ -57,13 +56,13 @@ export default function InsightsDashboard() {
     }).sort((a, b) => b.pct - a.pct)
 
     const avgByPlan = TIER_ORDER.map((p) => {
-      const list = hostels.filter((h) => h.plan === p && effectiveSubscriptionStatus(h, graceDays) === "active")
+      const list = hostels.filter((h) => h.plan === p && effectiveSubscriptionStatus(h) === "active")
       const avg = list.length ? Math.round(list.reduce((s, h) => s + h.studentCount, 0) / list.length) : 0
       return { name: planLabel(p), avg }
     })
 
     const trials = hostels.filter((h) => h.status === "trial" || h.trialLapsed)
-    const converted = hostels.filter((h) => effectiveSubscriptionStatus(h, graceDays) === "active" && h.auditTrail.some((e) => /trial/i.test(e.description)))
+    const converted = hostels.filter((h) => effectiveSubscriptionStatus(h) === "active" && h.auditTrail.some((e) => /trial/i.test(e.description)))
     const lapsed = hostels.filter((h) => h.trialLapsed)
     const conversion = trials.length + converted.length ? Math.round((converted.length / (converted.length + lapsed.length || 1)) * 100) : 42
 
@@ -86,7 +85,7 @@ export default function InsightsDashboard() {
       converted: converted.length || 5,
       lapsed: lapsed.length || 2,
     }
-  }, [graceDays, hostels])
+  }, [hostels])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pb-6">

@@ -41,7 +41,6 @@ import {
   calcPeriodValue,
   gstBreakdown,
   hostelRate,
-  isInGracePeriod,
   isLowerTier,
   isSubscriptionExpired,
   matchBillingCycle,
@@ -54,7 +53,6 @@ import {
   invoiceSerialInYear,
   invoiceTotalsFromGross,
   requestSerial,
-  subscriptionAccessEndDate,
 } from "@/lib/revenue/utils"
 import { remainingFraction } from "@/lib/revenue/subscriptionBilling"
 
@@ -68,6 +66,9 @@ export type SubscriptionUpsertInput = {
   trial: boolean
   trialDays?: number
   billingCycle?: BillingCycle
+  discountType?: InvoiceDiscountType
+  discountValue?: number
+  discountReason?: string
 }
 
 export type ManualInvoiceInput = {
@@ -441,8 +442,6 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       const result = computeMidCycleChange(h, input, settings.gstRate, {
         pricing,
         isTrial: h.status === "trial",
-        inGrace: isInGracePeriod(h, settings.defaultGraceDays),
-        accessEndDate: subscriptionAccessEndDate(h, settings.defaultGraceDays).format("YYYY-MM-DD"),
         cgstRate: settings.cgstRate,
         sgstRate: settings.sgstRate,
       })
@@ -478,7 +477,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       next.annualValue = calcARR(next.studentCount, result.contractRate, next.status)
       return next
     },
-    [pricing, settings.cgstRate, settings.defaultGraceDays, settings.gstRate, settings.sgstRate, takeInvoiceNos]
+    [pricing, settings.cgstRate, settings.gstRate, settings.sgstRate, takeInvoiceNos]
   )
 
   const updateSubscription = useCallback(
@@ -529,7 +528,6 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
             : r
         )
 
-      const graceDays = settings.defaultGraceDays
       const inPeriod =
         current.status === "active" &&
         remainingFraction(current.renewalDate, current.billingCycle, {
@@ -539,13 +537,10 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         Boolean(request.startTrial) ||
         current.status === "trial" ||
         current.status === "deactivated" ||
-        isInGracePeriod(current, graceDays) ||
-        isSubscriptionExpired(current, graceDays)
+        isSubscriptionExpired(current)
 
       const newPeriodRequested = Boolean(request.subscriptionStartDate && request.renewalDate)
-      const stayOnWindow =
-        !newPeriodRequested &&
-        (inPeriod || current.status === "trial" || isInGracePeriod(current, graceDays))
+      const stayOnWindow = !newPeriodRequested && (inPeriod || current.status === "trial")
       const requestedPlan =
         request.type === "module_add_remove" ? "CUSTOM" : (request.planRequested ?? current.plan)
       const requestedModules =
@@ -558,8 +553,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
             : current.activeModules
       const requestedStudents = request.studentCount ?? current.studentCount
       const blockDecrease =
-        requestedStudents < current.studentCount &&
-        (inPeriod || current.status === "trial" || isInGracePeriod(current, graceDays))
+        requestedStudents < current.studentCount && (inPeriod || current.status === "trial")
       const studentCount = blockDecrease ? current.studentCount : requestedStudents
       const cycle: BillingCycle =
         request.billingCycle ??
@@ -638,7 +632,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         }
       } else if (request.type === "student_count_update") {
         const delta = studentCount - current.studentCount
-        if (delta < 0 && (inPeriod || current.status === "trial" || isInGracePeriod(current, graceDays))) {
+        if (delta < 0 && (inPeriod || current.status === "trial")) {
           next.pendingRequests = markApproved()
         } else if (delta > 0 && inPeriod) {
           next = materializeChange(
@@ -687,8 +681,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         }
       } else if (
         (request.type === "plan_upgrade" || request.type === "module_add_remove") &&
-        (inPeriod ||
-          ((current.status === "trial" || isInGracePeriod(current, graceDays)) && !newPeriodRequested))
+        (inPeriod || (current.status === "trial" && !newPeriodRequested))
       ) {
         const addStudents = Math.max(0, studentCount - current.studentCount)
         next = materializeChange(
@@ -753,7 +746,7 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       setHostels((prev) => prev.map((h) => (h.hostelId === hostelId || h._id === hostelId ? next : h)))
       toast.success(createInvoice ? "Request approved and invoice created" : "Request approved", toastOpts)
     },
-    [hostels, materializeChange, planModules, pricing, settings.defaultGraceDays, settings.gstRate, takeInvoiceNos]
+    [hostels, materializeChange, planModules, pricing, settings.gstRate, takeInvoiceNos]
   )
 
   const rejectRequest = useCallback((hostelId: string, requestId: string, reason: string) => {
@@ -853,7 +846,9 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
         if (!request || request.status !== "pending") return h
         return {
           ...h,
-          pendingRequests: h.pendingRequests.filter((r) => r.id !== requestId),
+          pendingRequests: h.pendingRequests.map((r) =>
+            r.id === requestId ? { ...r, status: "withdrawn" as const } : r
+          ),
         }
       })
     )
@@ -907,8 +902,13 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
       const amount = input.trial
         ? 0
         : calcPeriodValue(input.studentCount, rate, periodMonthsFromDates(input.startDate, renewalDate), "active")
+      const hasDiscount =
+        (input.discountType === "flat" || input.discountType === "percent") &&
+        (input.discountValue ?? 0) > 0
       const totals = invoiceTotalsFromGross({
         gross: amount,
+        discountType: hasDiscount ? input.discountType : undefined,
+        discountValue: hasDiscount ? input.discountValue : undefined,
         sameState: true,
         gstRate: settings.gstRate,
         cgstRate: settings.cgstRate,
@@ -1029,6 +1029,10 @@ export function RevenueProvider({ children }: { children: ReactNode }) {
               billingPeriodEnd: renewalDate,
               students: input.studentCount,
               amount: totals.taxable,
+              grossAmount: totals.gross,
+              discountType: hasDiscount ? input.discountType : undefined,
+              discountValue: hasDiscount ? input.discountValue : undefined,
+              discountReason: hasDiscount ? input.discountReason : undefined,
               gst: totals.gst,
               total: totals.total,
               status: input.trial ? "paid" : "unpaid",

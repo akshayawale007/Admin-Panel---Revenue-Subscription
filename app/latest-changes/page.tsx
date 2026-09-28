@@ -3,6 +3,63 @@
 import LayoutWrapper from "@/component/Common/Layout/LayoutWrapper"
 import { AppNavbar } from "@/component/Navbar"
 
+const today = {
+  date: "28 Sep 2026",
+  sections: [
+    {
+      title: "Revenue — Upgrade request view",
+      items: [
+        "Request details show Up. Req. Id beside status, request type, requested by, and requested on.",
+        "Request types are Change seats, Change subscription plan, and Custom module package.",
+        "Current plan and Requested plan come first on every request. Trial is never shown as a plan name.",
+        "Seat changes show Current billed seats, Additional seats, and New total billed seats.",
+        "Every card shows Original plan billing period and Requested plan billing period on one three-column grid, so the requested column lines up.",
+      ],
+    },
+    {
+      title: "Revenue — Subscription pages",
+      items: [
+        "Billed seats is the seat count. Under it, Original seats and Seats added mid-plan are on separate lines, on both admin and warden.",
+        "Renewal is shown in days. The value turns red when 30 days or fewer remain, including after the period has ended.",
+      ],
+    },
+    {
+      title: "Revenue — Hostels table",
+      items: ["Billing period is a start date to an end date."],
+    },
+    {
+      title: "Revenue — Upgrade button",
+      items: [
+        "Upgrade stays disabled while a request is open.",
+        "The hostel and the admin each get their own hover message. The message is shown above the table header.",
+      ],
+    },
+    {
+      title: "Revenue — Upgrade wizard and invoices",
+      items: [
+        "The sticky header shows Plan, Billing period, and Billed seats.",
+        "The upgrade invoice preview uses CGST and SGST. The charge hint uses seats, rate, and days.",
+        "Bill to shows the hostel name, address, contact name, and contact mobile.",
+      ],
+    },
+    {
+      title: "Hostel — Add hostel",
+      items: [
+        "Contacts are two rows of name, mobile, and email, then visiting hours.",
+        "View invoice on create includes the discount, and that discount is stored on the opening invoice.",
+        "With trial on, students are capped at 50 and staff at 20.",
+      ],
+    },
+    {
+      title: "Revenue — Access",
+      items: [
+        "Grace period is removed. Access ends on the renewal date.",
+        "Withdrawing a request sets its status to withdrawn.",
+      ],
+    },
+  ],
+}
+
 const sections = [
   {
     title: "Revenue — Compare plans",
@@ -74,6 +131,21 @@ export default function Page() {
       <div className="yoco-page-card min-h-0">
         <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
           <div className="flex flex-col gap-6">
+            <section>
+              <h2 className="text-sm font-semibold text-(--yoco-text)">{today.date}</h2>
+              <div className="mt-4 flex flex-col gap-6">
+                {today.sections.map((section) => (
+                  <section key={section.title}>
+                    <h3 className="text-sm font-semibold text-(--yoco-text)">{section.title}</h3>
+                    <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-(--yoco-text-muted)">
+                      {section.items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            </section>
             {sections.map((section) => (
               <section key={section.title}>
                 <h2 className="text-sm font-semibold text-(--yoco-text)">{section.title}</h2>

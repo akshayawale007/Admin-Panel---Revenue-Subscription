@@ -13,7 +13,7 @@ import PlanBadge from "@/component/Revenue/Shared/PlanBadge"
 import StatusBadge from "@/component/Revenue/Shared/StatusBadge"
 import { RevenueSkeleton, useSimulatedLoading } from "@/component/Revenue/Shared/RevenueSkeleton"
 import type { HostelSubscription, Invoice, PendingRequest } from "@/lib/revenue/types"
-import { daysUntil, effectiveSubscriptionStatus, formatDate, isInGracePeriod, isTrialSubscription, statusLabel, subscriptionAccessEndDate, subscriptionLifecycleCaption, subscriptionPlanLabel } from "@/lib/revenue/utils"
+import { daysUntil, effectiveSubscriptionStatus, formatDate, isTrialSubscription, statusLabel, subscriptionAccessEndDate, subscriptionLifecycleCaption, subscriptionPlanLabel } from "@/lib/revenue/utils"
 import { escapeCsvField } from "@/utils/exportCsv"
 import { MODULE_CATALOG } from "@/lib/revenue/constants"
 
@@ -28,7 +28,6 @@ const PLAN_OPTIONS = [
 const STATUS_OPTIONS = [
   { id: "all", label: "All statuses" },
   { id: "active", label: "Active" },
-  { id: "grace", label: "Grace" },
   { id: "trial", label: "Trial" },
   { id: "expired", label: "Expired" },
   { id: "deactivated", label: "Deactivated" },
@@ -44,20 +43,19 @@ const REQUEST_OPTIONS = [
   { id: "pending", label: "Pending" },
 ] as const
 
-function matchesStatus(hostel: HostelSubscription, filter: string, graceDays: number) {
+function matchesStatus(hostel: HostelSubscription, filter: string) {
   if (filter === "all") return true
-  const status = effectiveSubscriptionStatus(hostel, graceDays)
+  const status = effectiveSubscriptionStatus(hostel)
   if (filter === "trial") {
     return isTrialSubscription(hostel) && status !== "expired" && status !== "deactivated"
   }
-  if (filter === "grace") return isInGracePeriod(hostel, graceDays)
-  if (filter === "active") return status === "active" && !isInGracePeriod(hostel, graceDays)
+  if (filter === "active") return status === "active"
   return status === filter
 }
 
-function isExpiringSoon(hostel: HostelSubscription, graceDays: number) {
-  const days = daysUntil(subscriptionAccessEndDate(hostel, graceDays).format("YYYY-MM-DD"))
-  const status = effectiveSubscriptionStatus(hostel, graceDays)
+function isExpiringSoon(hostel: HostelSubscription) {
+  const days = daysUntil(subscriptionAccessEndDate(hostel).format("YYYY-MM-DD"))
+  const status = effectiveSubscriptionStatus(hostel)
   return days >= 0 && days <= 30 && status === "active"
 }
 
@@ -80,8 +78,7 @@ function invoiceColumnStatus(invoices: Invoice[]): "paid" | "unpaid" | null {
 }
 
 export default function HostelSubscriptionTable() {
-  const { hostels, settings } = useRevenue()
-  const graceDays = settings.defaultGraceDays
+  const { hostels } = useRevenue()
   const router = useRouter()
   const searchParams = useSearchParams()
   const loading = useSimulatedLoading(800)
@@ -121,10 +118,10 @@ export default function HostelSubscriptionTable() {
   const filtered = useMemo(() => {
     return hostels.filter((h) => {
       if (planFilter !== "all" && h.plan !== planFilter) return false
-      if (!matchesStatus(h, statusFilter, graceDays)) return false
+      if (!matchesStatus(h, statusFilter)) return false
       if (requestFilter === "pending" && !latestOpenRequest(h.pendingRequests)) return false
       if (invoiceFilter === "unpaid" && !h.invoices.some((inv) => inv.status === "unpaid")) return false
-      if (expiringOnly && !isExpiringSoon(h, graceDays)) return false
+      if (expiringOnly && !isExpiringSoon(h)) return false
       if (!query) return true
       const hay = [
         h.name,
@@ -132,7 +129,7 @@ export default function HostelSubscriptionTable() {
         h.state,
         h.hostelCode,
         subscriptionPlanLabel(h),
-        statusLabel(effectiveSubscriptionStatus(h, graceDays)),
+        statusLabel(effectiveSubscriptionStatus(h)),
         h.adminName,
         h.adminPhone,
       ]
@@ -140,7 +137,7 @@ export default function HostelSubscriptionTable() {
         .toLowerCase()
       return hay.includes(query)
     })
-  }, [expiringOnly, graceDays, hostels, invoiceFilter, planFilter, query, requestFilter, statusFilter])
+  }, [expiringOnly, hostels, invoiceFilter, planFilter, query, requestFilter, statusFilter])
 
   const pendingRequestCount = useMemo(
     () => hostels.reduce((sum, h) => sum + openRequests(h.pendingRequests).length, 0),
@@ -175,10 +172,10 @@ export default function HostelSubscriptionTable() {
         accessorKey: "plan",
         header: "Current Plan",
         cell: ({ row }) => {
-          const caption = subscriptionLifecycleCaption(row.original, graceDays)
+          const caption = subscriptionLifecycleCaption(row.original)
           return (
             <div className="flex flex-col items-start gap-0.5">
-              <PlanBadge plan={row.original.plan} trial={isTrialSubscription(row.original)} />
+              <PlanBadge plan={row.original.plan} />
               <span className={`text-[10px] font-medium leading-tight ${caption.className}`}>{caption.label}</span>
             </div>
           )
@@ -227,19 +224,14 @@ export default function HostelSubscriptionTable() {
       {
         id: "dates",
         header: "Billing Period",
-        size: 148,
+        size: 200,
         cell: ({ row }) => {
-          const days = daysUntil(subscriptionAccessEndDate(row.original, graceDays).format("YYYY-MM-DD"))
-          const showExpiry = isExpiringSoon(row.original, graceDays)
+          const days = daysUntil(subscriptionAccessEndDate(row.original).format("YYYY-MM-DD"))
+          const showExpiry = isExpiringSoon(row.original)
           return (
             <div className="flex flex-col gap-0.5 text-xs leading-tight">
               <p>
-                <span className="mr-1 text-(--yoco-text-muted)">Start</span>
-                {formatDate(row.original.subscriptionStartDate)}
-              </p>
-              <p>
-                <span className="mr-1 text-(--yoco-text-muted)">Renew</span>
-                {formatDate(row.original.renewalDate)}
+                {formatDate(row.original.subscriptionStartDate)} – {formatDate(row.original.renewalDate)}
               </p>
               {showExpiry ? (
                 <p className="font-medium text-red-600">
@@ -268,7 +260,7 @@ export default function HostelSubscriptionTable() {
         ),
       },
     ],
-    [graceDays, pendingInvoiceCount, pendingRequestCount, router]
+    [pendingInvoiceCount, pendingRequestCount, router]
   )
 
   const exportRows = (rows: HostelSubscription[]) => {
@@ -295,7 +287,7 @@ export default function HostelSubscriptionTable() {
       row.annualValue,
       formatDate(row.subscriptionStartDate),
       formatDate(row.renewalDate),
-      subscriptionLifecycleCaption(row, graceDays).label,
+      subscriptionLifecycleCaption(row).label,
       row.activeModules.map((k) => MODULE_CATALOG.find((m) => m.key === k)?.name ?? k).join("; "),
       formatDate(row.lastPaymentDate),
       row.notes.map((n) => n.text).join("; "),

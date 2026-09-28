@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Modal from "@/component/Common/Modal/Modal"
 import Button from "@/component/Common/Button/Button"
 import YocoSelect from "@/component/Common/Select/YocoSelect"
+import InvoiceBillTo from "@/component/Revenue/Shared/InvoiceBillTo"
 import InvoiceDiscountFields, { type DiscountMode } from "@/component/Revenue/Shared/InvoiceDiscountFields"
 import { useRevenue } from "@/component/Revenue/RevenueProvider"
 import { MODULE_CATALOG, MODULE_PILL_CURRENT, TIER_ORDER } from "@/lib/revenue/constants"
@@ -167,17 +168,7 @@ export default function ManualInvoiceModal({
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <p className="yoco-form-title text-base">{editing ? `Edit ${invoice?.invoiceNo}` : "INVOICE"}</p>
         <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <p className="text-xs font-semibold uppercase text-(--yoco-text-muted)">Bill to</p>
-            <p className="font-bold">{hostel.name}</p>
-            <p>
-              {hostel.city}, {hostel.state}
-            </p>
-            <p>{hostel.hostelCode}</p>
-            <p>
-              {hostel.adminName} · {hostel.adminPhone}
-            </p>
-          </div>
+          <InvoiceBillTo hostel={hostel} />
           <div className="text-right">
             <p className="text-lg font-bold">{settings.companyName}</p>
             <p className="text-xs text-(--yoco-text-muted)">GSTIN: {settings.gstin}</p>

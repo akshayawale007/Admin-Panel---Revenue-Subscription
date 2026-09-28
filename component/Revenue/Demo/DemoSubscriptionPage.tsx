@@ -7,6 +7,7 @@ import LayoutWrapper from "@/component/Common/Layout/LayoutWrapper"
 import { AppNavbar } from "@/component/Navbar"
 import ComparePlansModal from "@/component/Revenue/Demo/ComparePlansModal"
 import WardenOverview from "@/component/Revenue/Demo/WardenOverview"
+import UpgradeActionButton from "@/component/Revenue/Shared/UpgradeActionButton"
 import UpgradeSubscriptionModal, {
   type UpgradeKind,
 } from "@/component/Revenue/Shared/UpgradeSubscriptionModal"
@@ -15,7 +16,7 @@ import InvoicesTab from "@/component/Revenue/Hostels/tabs/InvoicesTab"
 import PendingRequestsTab from "@/component/Revenue/Hostels/tabs/PendingRequestsTab"
 import HostelIdentityCard from "@/component/Revenue/Shared/HostelIdentityCard"
 import { useRevenue } from "@/component/Revenue/RevenueProvider"
-import { isInGracePeriod, isSubscriptionExpired } from "@/lib/revenue/utils"
+import { isSubscriptionExpired } from "@/lib/revenue/utils"
 import type { PlanTier } from "@/lib/revenue/types"
 
 function TabLabel({ title, count }: { title: string; count?: number }) {
@@ -32,7 +33,7 @@ function TabLabel({ title, count }: { title: string; count?: number }) {
 }
 
 export default function DemoSubscriptionPage() {
-  const { hostels, planModules, settings } = useRevenue()
+  const { hostels, planModules } = useRevenue()
   const [hostelId, setHostelId] = useState(hostels[0]?.hostelId ?? "")
   const hostel = hostels.find((h) => h.hostelId === hostelId) ?? hostels[0]
   const [compareOpen, setCompareOpen] = useState(false)
@@ -40,14 +41,10 @@ export default function DemoSubscriptionPage() {
   const [prefillKind, setPrefillKind] = useState<UpgradeKind | null>(null)
   const [prefillPlan, setPrefillPlan] = useState<PlanTier | "">("")
 
-  const graceDays = settings.defaultGraceDays
-  const inGrace = hostel ? isInGracePeriod(hostel, graceDays) : false
   const openRequests = hostel?.pendingRequests.filter((r) => r.status === "pending" || r.status === "on_hold") ?? []
   const hasOpenRequest = openRequests.length > 0
   const pendingInvoiceCount = hostel?.invoices.filter((inv) => inv.status === "unpaid").length ?? 0
-  const inPeriodActive = hostel
-    ? hostel.status === "active" && !inGrace && !isSubscriptionExpired(hostel, graceDays)
-    : false
+  const inPeriodActive = hostel ? hostel.status === "active" && !isSubscriptionExpired(hostel) : false
 
   const openUpgrade = (kind: UpgradeKind | null = null, plan: PlanTier | "" = "") => {
     setPrefillKind(kind)
@@ -105,7 +102,11 @@ export default function DemoSubscriptionPage() {
           <div className="modules-tabs modules-tabs--fit relative px-4 pt-1 pb-4 [&_[role=tablist]]:pr-56">
             <div className="hostel-tab-actions absolute top-2 right-4 z-10">
               <Button title="Compare plans" variant="secondary" onClick={() => setCompareOpen(true)} />
-              <Button title="Upgrade" onClick={() => openUpgrade()} disabled={hasOpenRequest} />
+              <UpgradeActionButton
+                disabled={hasOpenRequest}
+                hint="A new upgrade cannot be requested while one is already open. The current request must be approved or rejected by an administrator, or withdrawn by the hostel."
+                onClick={() => openUpgrade()}
+              />
             </div>
             <Tabs variant="underline">
               <TabItem active title="Subscriptions">

@@ -50,7 +50,6 @@ export default function RevenueSettings() {
   const { settings, saveSettings, planModules, savePlanModules, planRates, customModuleRates, savePricing } = useRevenue()
   const [invoice, setInvoice] = useState<RevenueSettingsType>(settings)
   const [gstError, setGstError] = useState("")
-  const [grace, setGrace] = useState(settings.defaultGraceDays)
   const [modules, setModules] = useState<PlanModuleConfig>({ ...planModules, CUSTOM: [] })
   const [rates, setRates] = useState(planRates)
   const [moduleRates, setModuleRates] = useState(customModuleRates)
@@ -192,7 +191,6 @@ export default function RevenueSettings() {
       cgstRate: Number(invoice.cgstRate) || 0,
       sgstRate: Number(invoice.sgstRate) || 0,
       gstRate: (Number(invoice.cgstRate) || 0) + (Number(invoice.sgstRate) || 0),
-      defaultGraceDays: Math.max(0, Math.floor(Number(grace) || 0)),
       reminderDays: settings.reminderDays,
       whatsappSenderName: settings.whatsappSenderName,
       whatsappSenderPhone: settings.whatsappSenderPhone,
@@ -364,15 +362,6 @@ export default function RevenueSettings() {
                 className="yoco-input px-3 py-1.5"
                 value={invoice.companyAddress}
                 onChange={(e) => setInvoice({ ...invoice, companyAddress: e.target.value })}
-              />
-            </Field>
-            <Field label="Grace period days">
-              <input
-                type="number"
-                min={0}
-                className="yoco-input px-3 py-1.5"
-                value={grace}
-                onChange={(e) => setGrace(Number(e.target.value))}
               />
             </Field>
           </div>

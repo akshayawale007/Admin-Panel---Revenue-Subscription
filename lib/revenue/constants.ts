@@ -104,7 +104,6 @@ export const DEFAULT_SETTINGS: RevenueSettings = {
   gstRate: 18,
   cgstRate: 9,
   sgstRate: 9,
-  defaultGraceDays: 30,
   reminderDays: [30, 15, 7],
   whatsappSenderName: "Yoco Billing",
   whatsappSenderPhone: "+91 98765 00000",

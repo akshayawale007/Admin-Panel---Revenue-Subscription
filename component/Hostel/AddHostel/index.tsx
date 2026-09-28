@@ -117,9 +117,12 @@ const AddHostel = () => {
     setValue("landmark", details.landmark)
     setValue("universityId", details.universityId)
     setValue("collegeId", details.collegeId)
-    setValue("contact1", details.contact1)
-    setValue("contact2", details.contact2)
-    setValue("contact3", details.contact3)
+    setValue("contactName1", details.contactName1)
+    setValue("contactMobile1", details.contactMobile1)
+    setValue("contactEmail1", details.contactEmail1)
+    setValue("contactName2", details.contactName2)
+    setValue("contactMobile2", details.contactMobile2)
+    setValue("contactEmail2", details.contactEmail2)
     setValue("visitingHoursStart", normalizeVisitingHours(details.visitingHoursStart))
     setValue("visitingHoursEnd", normalizeVisitingHours(details.visitingHoursEnd))
     setValue(
@@ -207,7 +210,7 @@ const AddHostel = () => {
           city: saved.city.name ?? saved.city.label,
           state: saved.state.name ?? saved.state.label,
           adminName: saved.name,
-          adminPhone: saved.contact1,
+          adminPhone: saved.contactMobile1,
         },
         plan: values.subscriptionPlan,
         studentCount: values.subscriptionStudentCount,
@@ -217,6 +220,15 @@ const AddHostel = () => {
         trial,
         trialDays: trial ? trialDays : undefined,
         billingCycle: trial ? undefined : values.subscriptionBillingCycle ?? undefined,
+        discountType:
+          values.subscriptionDiscountMode === "flat" || values.subscriptionDiscountMode === "percent"
+            ? values.subscriptionDiscountMode
+            : undefined,
+        discountValue:
+          values.subscriptionDiscountMode === "flat" || values.subscriptionDiscountMode === "percent"
+            ? Number(values.subscriptionDiscountValue) || undefined
+            : undefined,
+        discountReason: values.subscriptionDiscountReason?.trim() || undefined,
       })
     }
     router.push("/hostel/")

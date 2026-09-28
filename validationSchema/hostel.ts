@@ -71,23 +71,30 @@ export const hostelSchema = yup.object({
     then: (schema) => schema.required("College is required when university is selected"),
     otherwise: (schema) => schema.optional(),
   }),
-  contact1: yup
+  contactName1: yup.string().trim().required("Name is required."),
+  contactMobile1: yup
     .string()
-    .min(10, "Contact must be at least 10 digits")
-    .max(10, "Contact must be at most 10 digits")
-    .required("Contact is required."),
-  contact2: yup
+    .min(10, "Mobile no. must be 10 digits")
+    .max(10, "Mobile no. must be 10 digits")
+    .required("Mobile no. is required."),
+  contactEmail1: yup.string().trim().email("Enter a valid email.").required("Email is required."),
+  contactName2: yup
+    .string()
+    .transform((value) => (value === "" ? null : value))
+    .nullable()
+    .optional(),
+  contactMobile2: yup
     .string()
     .transform((value) => (value === "" ? null : value))
     .nullable()
     .optional()
-    .test("len", "Contact must be at least 10 digits", (value) => !value || value.length === 10),
-  contact3: yup
+    .test("len", "Mobile no. must be 10 digits", (value) => !value || value.length === 10),
+  contactEmail2: yup
     .string()
     .transform((value) => (value === "" ? null : value))
     .nullable()
     .optional()
-    .test("len", "Contact must be at least 10 digits", (value) => !value || value.length === 10),
+    .email("Enter a valid email."),
   visitingHoursStart: yup.string().nullable(),
   visitingHoursEnd: yup
     .string()
@@ -119,12 +126,27 @@ export const hostelSchema = yup.object({
     .number()
     .typeError("Seat count (Staff) is required.")
     .min(0, "Seat count (Staff) cannot be negative")
+    .when("subscriptionTrial", {
+      is: true,
+      then: (schema) => schema.max(20, "Trial plan allows a maximum of 20 staff."),
+    })
     .required("Seat count (Staff) is required."),
   subscriptionStudentCount: yup
     .number()
     .typeError("Seat count (Students) is required.")
     .min(1, "Seat count (Students) must be at least 1")
+    .when("subscriptionTrial", {
+      is: true,
+      then: (schema) => schema.max(50, "Trial plan allows a maximum of 50 students."),
+    })
     .required("Seat count (Students) is required."),
+  subscriptionDiscountMode: yup.mixed<"none" | "flat" | "percent">().oneOf(["none", "flat", "percent"]).optional(),
+  subscriptionDiscountValue: yup
+    .number()
+    .transform((value, original) => (original === "" || original == null || Number.isNaN(value) ? undefined : value))
+    .optional()
+    .nullable(),
+  subscriptionDiscountReason: yup.string().optional().nullable(),
   subscriptionModules: yup.array().of(yup.string().required()).default([]),
   subscriptionTrial: yup.boolean().default(true),
   subscriptionTrialDays: yup

@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect } from "react"
+import { useEffect, type ReactNode } from "react"
 import Modal from "@/component/Common/Modal/Modal"
 import Button from "@/component/Common/Button/Button"
 import type { HostelSubscription, Invoice, RevenueSettings, RevenueViewerRole } from "@/lib/revenue/types"
+import InvoiceBillTo, { type InvoiceBillToOverride } from "@/component/Revenue/Shared/InvoiceBillTo"
 import {
   formatDate,
   formatDateTime,
@@ -26,6 +27,8 @@ type Props = {
   onConfirmSend?: () => void
   viewerRole?: RevenueViewerRole
   autoPrint?: boolean
+  beforeSheet?: ReactNode
+  billTo?: InvoiceBillToOverride
 }
 
 export default function InvoicePreviewModal({
@@ -37,6 +40,8 @@ export default function InvoicePreviewModal({
   onConfirmSend,
   viewerRole = "admin",
   autoPrint = false,
+  beforeSheet,
+  billTo,
 }: Props) {
   useEffect(() => {
     if (!open || !autoPrint || !invoice) return
@@ -83,6 +88,7 @@ export default function InvoicePreviewModal({
         }
       `}</style>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        {beforeSheet ? <div className="mx-auto mb-4 max-w-[210mm] print:hidden">{beforeSheet}</div> : null}
         <div id="invoice-print-sheet" className="mx-auto max-w-[210mm] border border-(--yoco-border-subtle) bg-white p-8 text-[#3d2d5c] shadow-sm">
           <div className="flex items-start justify-between gap-4 border-b border-(--yoco-border-subtle) pb-4">
             <div>
@@ -102,17 +108,7 @@ export default function InvoicePreviewModal({
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-xs font-semibold uppercase text-(--yoco-text-muted)">Bill to</p>
-              <p className="font-bold">{hostel.name}</p>
-              <p>
-                {hostel.city}, {hostel.state}
-              </p>
-              <p>{hostel.hostelCode}</p>
-              <p>
-                {hostel.adminName} · {hostel.adminPhone}
-              </p>
-            </div>
+            <InvoiceBillTo hostel={hostel} override={billTo} />
             <div className="text-right">
               <p>Due date: {formatDate(invoice.dueDate)}</p>
               <p>Status: {statusLabel(invoice.status)}</p>

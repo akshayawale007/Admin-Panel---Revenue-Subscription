@@ -1,19 +1,18 @@
 "use client"
 
+import type { ReactNode } from "react"
 import Modal from "@/component/Common/Modal/Modal"
 import Button from "@/component/Common/Button/Button"
 import PlanBadge from "@/component/Revenue/Shared/PlanBadge"
 import StatusBadge from "@/component/Revenue/Shared/StatusBadge"
 import { MODULE_CATALOG } from "@/lib/revenue/constants"
-import { remainingFraction } from "@/lib/revenue/subscriptionBilling"
-import { billedRateFor, billingCycleLabel, customPlanRateBreakdown, formatDate, formatRate, hostelRate, addedModulesRate, roundRate, isTrialSubscription, moduleByKey, planLabel, requestTypeLabel } from "@/lib/revenue/utils"
-import { useRevenue } from "@/component/Revenue/RevenueProvider"
+import { billingCycleLabel, formatDate, requestTypeLabel } from "@/lib/revenue/utils"
 import type { HostelSubscription, PendingRequest, RevenueViewerRole } from "@/lib/revenue/types"
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
     <div className="min-w-0 overflow-hidden">
-      <p className="text-xs font-semibold uppercase tracking-wide text-(--yoco-text-muted)">{label}</p>
+      <div className="text-xs font-semibold uppercase tracking-wide text-(--yoco-text-muted)">{label}</div>
       <div className="mt-1 min-w-0 text-sm font-semibold break-words text-(--yoco-text)">{children}</div>
     </div>
   )
@@ -22,6 +21,29 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function moduleNames(keys?: string[]) {
   if (!keys?.length) return "—"
   return keys.map((key) => MODULE_CATALOG.find((m) => m.key === key)?.name ?? key).join(", ")
+}
+
+function periodRange(start?: string | null, end?: string | null) {
+  if (!start || !end) return "—"
+  return `${formatDate(start)} – ${formatDate(end)}`
+}
+
+function upgradeRequestPeriod(request: PendingRequest, hostel: HostelSubscription) {
+  if (request.subscriptionStartDate && request.renewalDate) {
+    return periodRange(request.subscriptionStartDate, request.renewalDate)
+  }
+  return periodRange(request.submittedOn, hostel.renewalDate)
+}
+
+function BillingPeriodFields({ request, hostel }: { request: PendingRequest; hostel: HostelSubscription }) {
+  return (
+    <>
+      <Field label="Original plan billing period">
+        {periodRange(hostel.subscriptionStartDate, hostel.renewalDate)}
+      </Field>
+      <Field label="Requested plan billing period">{upgradeRequestPeriod(request, hostel)}</Field>
+    </>
+  )
 }
 
 export default function RequestViewModal({
@@ -38,21 +60,21 @@ export default function RequestViewModal({
   viewerRole?: RevenueViewerRole
 }) {
   return (
-    <Modal open={open} setOpen={(v) => !v && onClose()} width="lg">
+    <Modal open={open} setOpen={(v) => !v && onClose()} width="5xl">
       <div className="min-w-0 overflow-x-hidden p-5">
         <p className="yoco-form-title">Request details</p>
         {request ? (
           <div className="mt-4 flex flex-col gap-5">
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Request ID">{request.requestNo}</Field>
-              <Field label="Request type">{requestTypeLabel(request.type)}</Field>
-              <Field label="Status">
+              <Field label="UP REQ. ID">{request.requestNo}</Field>
+              <Field label="Upgrade request status">
                 <StatusBadge status={request.status} />
               </Field>
+              <Field label="Request type">{requestTypeLabel(request.type)}</Field>
               <Field label="Requested by">
                 {request.requestedBy} · {request.requestedByDesignation}
               </Field>
-              <Field label="Submitted">{formatDate(request.submittedOn)}</Field>
+              <Field label="Requested on">{formatDate(request.submittedOn)}</Field>
             </div>
 
             {request.type === "student_count_update" ? (
@@ -99,101 +121,75 @@ export default function RequestViewModal({
   )
 }
 
+const requestCardClass =
+  "grid min-w-0 gap-4 overflow-hidden rounded-lg border border-(--yoco-border-subtle) px-4 py-3 sm:grid-cols-3"
+
 function StudentBody({ request, hostel }: { request: PendingRequest; hostel: HostelSubscription }) {
-  const activated = hostel.activatedStudentCount ?? hostel.studentCount
   const add = request.requestedAddStudents ?? Math.max(0, (request.studentCount ?? hostel.studentCount) - hostel.studentCount)
-  const { monthsLeft, inOriginalPeriod } = remainingFraction(hostel.renewalDate, hostel.billingCycle, {
-    periodStart: hostel.subscriptionStartDate,
-  })
   return (
-    <div className="grid min-w-0 gap-4 overflow-hidden rounded-lg border border-(--yoco-border-subtle) px-4 py-3 sm:grid-cols-2">
-      <Field label="Original seats">{activated}</Field>
-      <Field label="Current billed">{hostel.studentCount}</Field>
-      <Field label="Seats requested to add">{add}</Field>
-      <Field label="New billed total">{hostel.studentCount + add}</Field>
-      <Field label="Original plan billing period">
-        {formatDate(hostel.subscriptionStartDate)} – {formatDate(hostel.renewalDate)}
+    <div className={requestCardClass}>
+      <Field label="Current plan">
+        <PlanBadge plan={hostel.plan} />
       </Field>
-      <Field label="Applies until original renewal">
-        {inOriginalPeriod
-          ? `${formatDate(hostel.renewalDate)} · ${monthsLeft} month${monthsLeft === 1 ? "" : "s"} left`
-          : "Original period has ended — cannot apply mid-plan"}
+      <Field label="Requested plan">
+        <PlanBadge plan={hostel.plan} />
       </Field>
+      <div />
+      <Field label="Current billed seats">{hostel.studentCount}</Field>
+      <Field label="Additional seats">{add}</Field>
+      <Field label="New total billed seats">{hostel.studentCount + add}</Field>
+      <BillingPeriodFields request={request} hostel={hostel} />
+      <div />
     </div>
   )
 }
 
 function PlanBody({ request, hostel }: { request: PendingRequest; hostel: HostelSubscription }) {
-  const { planRates, customModuleRates, planModules } = useRevenue()
-  const pricing = { planRates, customModuleRates, planModules }
-  const currentRate = hostelRate(hostel)
-  const nextModules =
-    request.planRequested === "CUSTOM" ? (request.modules ?? hostel.activeModules) : request.modules
-  const nextRate = billedRateFor(request.planRequested ?? null, nextModules ?? hostel.activeModules, pricing)
   return (
-    <div className="grid min-w-0 gap-4 overflow-hidden rounded-lg border border-(--yoco-border-subtle) px-4 py-3 sm:grid-cols-2">
+    <div className={requestCardClass}>
       <Field label="Current plan">
-        <span className="flex min-w-0 flex-col items-start gap-1">
-          <PlanBadge plan={hostel.plan} trial={isTrialSubscription(hostel)} />
-          <span className="text-xs font-medium text-(--yoco-text-muted)">{formatRate(currentRate)}/seat/month</span>
-        </span>
+        <PlanBadge plan={hostel.plan} />
       </Field>
       <Field label="Requested plan">
-        <span className="flex min-w-0 flex-col items-start gap-1">
-          <PlanBadge plan={request.planRequested ?? null} />
-          <span className="text-xs font-medium text-(--yoco-text-muted)">{formatRate(nextRate)}/seat/month</span>
-        </span>
+        <PlanBadge plan={request.planRequested ?? null} />
       </Field>
-      <Field label="Rate difference">{formatRate(nextRate - currentRate)}/seat/month</Field>
+      <div />
       <Field label="Requested seats">{request.studentCount ?? hostel.studentCount}</Field>
-      <Field label="Difference applies to">{hostel.studentCount} billed seats</Field>
-      {request.billingCycle ? <Field label="Requested billing cycle">{billingCycleLabel(request.billingCycle)}</Field> : null}
-      {request.subscriptionStartDate && request.renewalDate ? (
-        <Field label="Requested billing period">
-          {formatDate(request.subscriptionStartDate)} – {formatDate(request.renewalDate)}
-        </Field>
-      ) : null}
+      {request.billingCycle ? (
+        <Field label="Requested billing cycle">{billingCycleLabel(request.billingCycle)}</Field>
+      ) : (
+        <div />
+      )}
+      <div />
+      <BillingPeriodFields request={request} hostel={hostel} />
+      <div />
     </div>
   )
 }
 
 function ModuleBody({ request, hostel }: { request: PendingRequest; hostel: HostelSubscription }) {
-  const { planRates, customModuleRates, planModules } = useRevenue()
-  const pricing = { planRates, customModuleRates, planModules }
   const nextModules = request.modules?.length
     ? Array.from(new Set([...hostel.activeModules, ...request.modules]))
     : hostel.activeModules
   const extras = nextModules.filter((key) => !hostel.activeModules.includes(key))
-  const currentRate = hostelRate(hostel)
-  const newPeriod = Boolean(request.subscriptionStartDate && request.renewalDate)
-  const nextRate = newPeriod
-    ? billedRateFor("CUSTOM", nextModules, pricing)
-    : roundRate(currentRate + addedModulesRate(extras, pricing))
-  const breakdown = customPlanRateBreakdown(nextModules, pricing)
   return (
-    <div className="grid min-w-0 gap-4 overflow-hidden rounded-lg border border-(--yoco-border-subtle) px-4 py-3 sm:grid-cols-2">
+    <div className={requestCardClass}>
+      <Field label="Current plan">
+        <PlanBadge plan={hostel.plan} />
+      </Field>
+      <Field label="Requested plan">
+        <PlanBadge plan="CUSTOM" />
+      </Field>
+      <div />
       <Field label="Active modules">{moduleNames(hostel.activeModules)}</Field>
       <Field label="Requested modules">{moduleNames(nextModules)}</Field>
       <Field label="Added modules">{moduleNames(extras)}</Field>
-      <Field label="Resulting plan">Custom</Field>
-      <Field label="Current rate">{formatRate(currentRate)}/seat/month</Field>
-      <Field label="Custom rate">{formatRate(nextRate)}/seat/month</Field>
-      {newPeriod && breakdown.baseRate ? (
-        <Field label="Base package">{formatRate(breakdown.baseRate)}/seat/month</Field>
-      ) : null}
-      {(newPeriod ? breakdown.extras : extras.map((key) => ({ key, rate: pricing.customModuleRates[key] ?? 0 }))).map(
-        (line) => (
-        <Field key={line.key} label={moduleByKey(line.key)?.name ?? line.key}>
-          {formatRate(line.rate)}/seat/month
-        </Field>
-      )
+      <BillingPeriodFields request={request} hostel={hostel} />
+      {request.billingCycle ? (
+        <Field label="Requested billing cycle">{billingCycleLabel(request.billingCycle)}</Field>
+      ) : (
+        <div />
       )}
-      {request.billingCycle ? <Field label="Requested billing cycle">{billingCycleLabel(request.billingCycle)}</Field> : null}
-      {request.subscriptionStartDate && request.renewalDate ? (
-        <Field label="Requested billing period">
-          {formatDate(request.subscriptionStartDate)} – {formatDate(request.renewalDate)}
-        </Field>
-      ) : null}
     </div>
   )
 }

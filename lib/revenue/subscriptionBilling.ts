@@ -23,8 +23,6 @@ export type SubscriptionChangeResult = {
 }
 
 export type RemainingFractionOptions = {
-  accessEndDate?: string
-  useAccessWindow?: boolean
   periodStart?: string
 }
 
@@ -33,9 +31,7 @@ export function remainingFraction(
   cycle: HostelSubscription["billingCycle"],
   options?: RemainingFractionOptions
 ) {
-  const billedEnd = dayjs(renewalDate)
-  const accessEnd = options?.accessEndDate ? dayjs(options.accessEndDate) : billedEnd
-  const periodEnd = options?.useAccessWindow ? accessEnd : billedEnd
+  const periodEnd = dayjs(renewalDate)
   const periodMonths = options?.periodStart
     ? periodMonthsFromDates(options.periodStart, periodEnd.format("YYYY-MM-DD"))
     : billingMonths(cycle)
@@ -48,8 +44,15 @@ export function remainingFraction(
     periodMonths,
     fraction: periodMonths ? monthsLeft / periodMonths : 0,
     periodEnd: periodEnd.format("YYYY-MM-DD"),
-    inOriginalPeriod: options?.useAccessWindow ? inWindow : billedEnd.isAfter(now, "day"),
+    inOriginalPeriod: inWindow,
   }
+}
+
+export function daysLeftInPeriod(renewalDate: string) {
+  const end = dayjs(renewalDate).startOf("day")
+  const today = dayjs().startOf("day")
+  if (!end.isAfter(today, "day")) return 0
+  return Math.max(1, end.diff(today, "day"))
 }
 
 export function studentAddCharge(added: number, rate: number, monthsLeft: number) {
@@ -104,8 +107,6 @@ function draftInvoice(
 export type MidCycleChangeOptions = {
   pricing?: PricingContext
   isTrial?: boolean
-  inGrace?: boolean
-  accessEndDate?: string
   cgstRate?: number
   sgstRate?: number
 }
@@ -122,8 +123,6 @@ export function computeMidCycleChange(
   const activated = hostel.activatedStudentCount ?? billedCount
   const previouslyAdded = hostel.addedStudentCount ?? Math.max(0, billedCount - activated)
   const period = remainingFraction(hostel.renewalDate, hostel.billingCycle, {
-    accessEndDate: options?.accessEndDate,
-    useAccessWindow: Boolean(options?.inGrace),
     periodStart: hostel.subscriptionStartDate,
   })
   const addStudents = period.inOriginalPeriod && !options?.isTrial ? Math.max(0, Math.round(input.addStudents)) : 0

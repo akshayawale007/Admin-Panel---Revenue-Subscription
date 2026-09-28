@@ -6,7 +6,7 @@ export type BillingCycle = "QUARTERLY" | "SEMIANNUAL" | "ANNUAL"
 
 export type SubscriptionStatus = "active" | "trial" | "expired" | "deactivated"
 
-export type RequestStatus = "pending" | "on_hold" | "approved" | "rejected"
+export type RequestStatus = "pending" | "on_hold" | "approved" | "rejected" | "withdrawn"
 
 export type InvoiceStatus = "paid" | "unpaid" | "voided"
 
@@ -26,7 +26,6 @@ export type PendingRequestType =
   | "plan_downgrade"
   | "student_count_update"
   | "module_add_remove"
-  | "grace_period_extension"
   | "new_subscription"
   | "renewal_after_expiry"
 
@@ -36,7 +35,6 @@ export type WhatsAppMessageType =
   | "plan_rejected"
   | "on_hold"
   | "invoice_sent"
-  | "grace_period_warning"
   | "module_locked"
 
 export type ModuleKey = string
@@ -184,7 +182,6 @@ export type HostelSubscription = {
   contractRate: number
   subscriptionStartDate: string
   renewalDate: string
-  gracePeriodEndDate?: string
   activeModules: ModuleKey[]
   pendingRequests: PendingRequest[]
   invoices: Invoice[]
@@ -212,7 +209,6 @@ export type RevenueSettings = {
   cgstRate: number
   sgstRate: number
   logoDataUrl?: string
-  defaultGraceDays: number
   reminderDays: number[]
   whatsappSenderName: string
   whatsappSenderPhone: string

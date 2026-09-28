@@ -5,7 +5,9 @@ import Link from "next/link"
 import { useRevenue } from "@/component/Revenue/RevenueProvider"
 import { MODULE_CATALOG, MODULE_PILL_CURRENT, PLAN_COLORS, TIER_ORDER } from "@/lib/revenue/constants"
 import PlanBadge from "@/component/Revenue/Shared/PlanBadge"
+import InvoiceDiscountFields, { type DiscountMode } from "@/component/Revenue/Shared/InvoiceDiscountFields"
 import InvoicePreviewModal from "@/component/Revenue/Shared/InvoicePreviewModal"
+import { formatHostelAddress } from "@/component/Revenue/Shared/InvoiceBillTo"
 import Button from "@/component/Common/Button/Button"
 import {
   billedRateFor,
@@ -17,7 +19,6 @@ import {
   formatINR,
   formatRate,
   invoiceTotalsFromGross,
-  isTrialSubscription,
   periodMonthsFromDates,
   planLabel,
   subscriptionLifecycleCaption,
@@ -52,12 +53,32 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
   const stateLabel = stateValue?.name || stateValue?.label || ""
   const periodReady = Boolean(start && renewal && dayjs(renewal).isAfter(dayjs(start), "day") && count >= 1)
   const canPreview = periodReady && (!trial || trialDays >= 1)
+  const discountMode = (watch("subscriptionDiscountMode") ?? "none") as DiscountMode
+  const discountValueRaw = watch("subscriptionDiscountValue")
+  const discountReason = watch("subscriptionDiscountReason") ?? ""
+  const parsedDiscount = Number(discountValueRaw)
+  const hasDiscount = discountMode !== "none" && parsedDiscount > 0
+  const contactName = watch("contactName1") || "—"
+  const contactMobile = watch("contactMobile1") || "—"
+  const billTo = {
+    address: formatHostelAddress({
+      address: watch("address") || "",
+      landmark: watch("landmark") || "",
+      city: cityLabel,
+      state: stateLabel,
+      pincode: watch("pincode") || "",
+    }),
+    contactName,
+    contactMobile,
+  }
 
   const preview = useMemo(() => {
     const rate = trial ? 0 : billedRateFor(plan, selectedModules, { planRates, customModuleRates, planModules })
     const gross = trial || !periodReady ? 0 : calcPeriodValue(count, rate, periodMonthsFromDates(start, renewal), "active")
     const totals = invoiceTotalsFromGross({
       gross,
+      discountType: hasDiscount ? discountMode : undefined,
+      discountValue: hasDiscount ? parsedDiscount : undefined,
       sameState: true,
       gstRate: settings.gstRate,
       cgstRate: settings.cgstRate,
@@ -72,6 +93,10 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
       billingPeriodEnd: renewal,
       students: count,
       amount: totals.taxable,
+      grossAmount: totals.gross,
+      discountType: hasDiscount ? discountMode : undefined,
+      discountValue: hasDiscount ? parsedDiscount : undefined,
+      discountReason: hasDiscount ? discountReason.trim() || undefined : undefined,
       gst: totals.gst,
       total: totals.total,
       status: trial ? "paid" : "unpaid",
@@ -90,12 +115,16 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
       state: stateLabel,
       hostelCode: watch("hostelCode") || "—",
       adminName: hostelName,
-      adminPhone: watch("contact1") || "—",
+      adminPhone: watch("contactMobile1") || "—",
     } as HostelSubscription
     return { invoice, hostel }
   }, [
     cityLabel,
     count,
+    discountMode,
+    discountReason,
+    hasDiscount,
+    parsedDiscount,
     customModuleRates,
     cycle,
     hostelName,
@@ -123,7 +152,7 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
 
   if (readOnly) {
     const caption = currentSub
-      ? subscriptionLifecycleCaption(currentSub, settings.defaultGraceDays)
+      ? subscriptionLifecycleCaption(currentSub)
       : { label: trial ? "Trial" : "—", className: "text-(--yoco-text-muted)" }
     return (
       <div className="yoco-form-section w-full p-4 sm:p-6">
@@ -147,7 +176,7 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-(--yoco-text-muted)">Plan</p>
             <div className="mt-1 flex flex-col items-start gap-0.5">
-              <PlanBadge plan={plan} trial={currentSub ? isTrialSubscription(currentSub) : trial} />
+              <PlanBadge plan={plan} />
               <span className={`text-[10px] font-medium ${caption.className}`}>{caption.label}</span>
             </div>
           </div>
@@ -409,6 +438,19 @@ const Subscription = ({ setValue, register, watch, errors, readOnly, hostelId }:
         invoice={preview.invoice}
         hostel={preview.hostel}
         settings={settings}
+        billTo={billTo}
+        beforeSheet={
+          <InvoiceDiscountFields
+            mode={discountMode}
+            value={discountValueRaw == null || Number.isNaN(Number(discountValueRaw)) ? "" : String(discountValueRaw)}
+            reason={discountReason ?? ""}
+            onModeChange={(mode) => setValue("subscriptionDiscountMode", mode)}
+            onValueChange={(value) =>
+              setValue("subscriptionDiscountValue", value === "" ? undefined : Number(value))
+            }
+            onReasonChange={(reason) => setValue("subscriptionDiscountReason", reason)}
+          />
+        }
       />
     </div>
   )

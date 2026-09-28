@@ -11,11 +11,17 @@ import {
   formatINR,
   isInactiveSubscription,
   isSubscriptionExpired,
-  isTrialSubscription,
   subscriptionLifecycleCaption,
   upcomingChangeMessage,
 } from "@/lib/revenue/utils"
+import { daysLeftInPeriod } from "@/lib/revenue/subscriptionBilling"
 import type { HostelSubscription } from "@/lib/revenue/types"
+
+function timeLeftLabel(renewalDate: string) {
+  const days = daysLeftInPeriod(renewalDate)
+  if (!days) return "Original billing period has ended"
+  return `${days} day${days === 1 ? "" : "s"} left`
+}
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -27,12 +33,11 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export default function OverviewTab({ hostel }: { hostel: HostelSubscription }) {
-  const { updateHostel, addAudit, settings } = useRevenue()
-  const graceDays = settings.defaultGraceDays
+  const { updateHostel, addAudit } = useRevenue()
   const [deactivateOpen, setDeactivateOpen] = useState(false)
   const activated = hostel.activatedStudentCount ?? hostel.studentCount
   const added = hostel.addedStudentCount ?? Math.max(0, hostel.studentCount - activated)
-  const planCaption = subscriptionLifecycleCaption(hostel, graceDays)
+  const planCaption = subscriptionLifecycleCaption(hostel)
   const upcoming = upcomingChangeMessage(hostel)
 
   return (
@@ -46,7 +51,7 @@ export default function OverviewTab({ hostel }: { hostel: HostelSubscription }) 
         <div className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-800">
           This subscription has been deactivated. Contact your admin to restore access.
         </div>
-      ) : isSubscriptionExpired(hostel, graceDays) ? (
+      ) : isSubscriptionExpired(hostel) ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
           This hostel&apos;s subscription has expired. Renew the current plan or upgrade to continue.
         </div>
@@ -56,27 +61,40 @@ export default function OverviewTab({ hostel }: { hostel: HostelSubscription }) 
       <div className="flex flex-nowrap items-start gap-x-8 overflow-x-auto">
         <Fact label="Plan">
           <div className="flex flex-col items-start gap-0.5">
-            <PlanBadge plan={hostel.plan} trial={isTrialSubscription(hostel)} />
+            <PlanBadge plan={hostel.plan} />
             <span className={`text-[10px] font-medium leading-tight ${planCaption.className}`}>
               {planCaption.label}
             </span>
           </div>
         </Fact>
-        <Fact label="Original seats">{activated}</Fact>
-        <Fact label="Added seats">{added}</Fact>
-        <Fact label="Total seats">{hostel.studentCount}</Fact>
+        <Fact label="Billed seats">
+          <div>
+            <p>{hostel.studentCount}</p>
+            <p className="mt-0.5 text-xs font-normal leading-snug text-(--yoco-text-muted)">
+              Original seats {activated}
+            </p>
+            <p className="mt-0.5 text-xs font-normal leading-snug text-(--yoco-text-muted)">
+              Seats added mid-plan {added}
+            </p>
+          </div>
+        </Fact>
         <Fact label="Billing Period">
           {formatDate(hostel.subscriptionStartDate)} – {formatDate(hostel.renewalDate)}
+        </Fact>
+        <Fact label="Renewal">
+          <span className={daysLeftInPeriod(hostel.renewalDate) <= 30 ? "text-red-600" : undefined}>
+            {timeLeftLabel(hostel.renewalDate)}
+          </span>
         </Fact>
       </div>
 
       <div>
         <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-(--yoco-text-muted)">
           Active modules ·{" "}
-          {isInactiveSubscription(hostel, graceDays) ? 0 : hostel.activeModules.length}
+          {isInactiveSubscription(hostel) ? 0 : hostel.activeModules.length}
         </p>
         <div className="flex flex-wrap gap-2">
-          {!isInactiveSubscription(hostel, graceDays) &&
+          {!isInactiveSubscription(hostel) &&
             MODULE_CATALOG.filter((mod) => hostel.activeModules.includes(mod.key)).map((mod) => (
               <span
                 key={mod.key}
@@ -85,7 +103,7 @@ export default function OverviewTab({ hostel }: { hostel: HostelSubscription }) 
                 {mod.name}
               </span>
             ))}
-          {isInactiveSubscription(hostel, graceDays) || hostel.activeModules.length === 0 ? (
+          {isInactiveSubscription(hostel) || hostel.activeModules.length === 0 ? (
             <span className="text-sm text-(--yoco-text-muted)">No active modules</span>
           ) : null}
         </div>

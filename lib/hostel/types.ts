@@ -92,9 +92,12 @@ export type HostelRecord = {
   landmark: string
   universityId: SelectOption | null
   collegeId: SelectOption | null
-  contact1: string
-  contact2: string
-  contact3: string
+  contactName1: string
+  contactMobile1: string
+  contactEmail1: string
+  contactName2: string
+  contactMobile2: string
+  contactEmail2: string
   visitingHoursStart: string
   visitingHoursEnd: string
   messAvailable: boolean
@@ -127,9 +130,12 @@ export type HostelFormValues = {
   landmark?: string | null
   universityId?: SelectOption | null
   collegeId?: SelectOption | null
-  contact1: string
-  contact2?: string | null
-  contact3?: string | null
+  contactName1: string
+  contactMobile1: string
+  contactEmail1: string
+  contactName2?: string | null
+  contactMobile2?: string | null
+  contactEmail2?: string | null
   visitingHoursStart?: string | null
   visitingHoursEnd?: string | null
   availability?: SelectOption | null
@@ -145,4 +151,7 @@ export type HostelFormValues = {
   subscriptionTrial?: boolean
   subscriptionTrialDays?: number
   subscriptionBillingCycle?: "QUARTERLY" | "SEMIANNUAL" | "ANNUAL"
+  subscriptionDiscountMode?: "none" | "flat" | "percent"
+  subscriptionDiscountValue?: number | null
+  subscriptionDiscountReason?: string | null
 }
